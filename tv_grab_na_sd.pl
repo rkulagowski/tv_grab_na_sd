@@ -76,8 +76,8 @@ This script supports the following command line arguments.
 --debug                    Enable debug mode. Prints additional information
                            to assist in troubleshooting any issues.
                            
---zipcode                  When grabbing the channel list from Schedules Direct,
-                           you can supply your 5-digit zip code or
+--zipcode                  When grabbing the channel list from Schedules
+                           Direct, you can supply your 5-digit zip code or
                            6-character postal code to get a list of cable TV
                            providers in your area, otherwise you'll be
                            prompted.  If you're specifying a Canadian postal
