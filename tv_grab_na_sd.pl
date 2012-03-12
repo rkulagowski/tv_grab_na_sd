@@ -68,11 +68,10 @@ my %device_type_hash = (
 
 if ($help) {
     print <<EOF;
-qamscanner.pl v$version $date
-Usage: qamscanner.pl [switches]
+tv_grab_na_sd.pl v$version $date
+Usage: tv_grab_na_sd.pl [switches]
 
 This script supports the following command line arguments.
-No arguments will run a scan from channel 1 through 1000.
 
 --debug                    Enable debug mode. Prints additional information
                            to assist in troubleshooting any issues.
@@ -90,11 +89,11 @@ No arguments will run a scan from channel 1 through 1000.
                            traditional analog lineup.
 
 --username                 Login credentials.
---password                 Login credentials. NOTE: These will be visible in "ps".
+--password                 Login credentials.
 
 --help                     This screen.
 
-Bug reports to qam-info\@schedulesdirect.org  Include the .conf file and the
+Bug reports to rkulagow\@schedulesdirect.org  Include the .conf file and the
 complete output when the script is run with --debug
 
 EOF
