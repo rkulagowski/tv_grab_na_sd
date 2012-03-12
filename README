@@ -22,5 +22,5 @@ This script supports the following command line arguments.
 
 --help                     This screen.
 
-Bug reports to rkulagow\@schedulesdirect.org  Include the .conf file and the
+Bug reports to rkulagow@schedulesdirect.org  Include the .conf file and the
 complete output when the script is run with --debug
