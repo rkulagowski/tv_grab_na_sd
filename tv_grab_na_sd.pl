@@ -6,17 +6,16 @@ use Getopt::Long;
 use WWW::Mechanize;
 use POSIX  qw(strftime);
 
-my $version = "0.01";
-my $date    = "2012-03-12";
+my $version = "0.02";
+my $date    = "2012-03-13";
 
-my ( @deviceid, @deviceip, @device_hwtype, @qam, @program, @hdhr_callsign );
-my ( @lineupinformation, @SD_callsign, @xmlid, @schedule_url, @data );
+my @data;
 my $i              = 0;
 my $channel_number = 0;
 my $lineupid       = "";
 my $devtype        = "";
-my $username;
-my $password;
+my $username = "";
+my $password = "";
 my $help;
 my $zipcode = "0";
 my $response;
@@ -305,11 +304,11 @@ for my $elem ( $device_type[$response]->{'linenumber'} +
 {
     my $line = $headend_lineup[$elem];
     $line =~ /^channel:(\d+) callsign:(\w+) stationid:(\d+) (.*+)$/;
-    $SD_callsign[$elem] = $2;
-    $xmlid[$elem]       = $3;
-    $schedule_url[$elem]= $4;
-    $m->get($schedule_url[$elem] . "&rand=" . $randhash);
-    $m->save_content("$xmlid[$elem]_sched.txt.gz");
+    $data[$elem]->{'callsign'} = $2;
+    $data[$elem]->{'xmlid'} = $3;
+    $data[$elem]->{'URL'} = $4;
+    $m->get($data[$elem]->{'URL'} . "&rand=" . $randhash);
+    $m->save_content($data[$elem]->{'xmlid'} . "_sched.txt.gz");
 }
 
 print "\nDone.\n";
