@@ -7,7 +7,7 @@ This script supports the following command line arguments.
 
 --zipcode                  When grabbing the channel list from Schedules
                            Direct, you can supply your 5-digit zip code or
-                           6-character postal code to get a list of cable TV
+                           6-character postal code to get a list of
                            providers in your area, otherwise you'll be
                            prompted.  If you're specifying a Canadian postal
                            code, then use six consecutive characters, no
