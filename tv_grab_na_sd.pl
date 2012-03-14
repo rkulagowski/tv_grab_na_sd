@@ -6,8 +6,8 @@ use Getopt::Long;
 use WWW::Mechanize;
 use POSIX  qw(strftime);
 
-my $version = "0.02";
-my $date    = "2012-03-13";
+my $version = "0.03";
+my $date    = "2012-03-14";
 
 my @data;
 my $i              = 0;
@@ -257,7 +257,7 @@ if ( $devtype eq "" ) # User didn't pass the device type as a parameter, so ask.
             print "$j. $device_type_hash{$device_type[$j]->{'type'}} ($device_type[$j]->{'type'})\n";
         }
 
-        print "Enter the number of the lineup you are scanning: ";
+        print "Enter the number of the lineup you wish to download: ";
         chomp( $response = <STDIN> );
         $response = uc($response);
 
