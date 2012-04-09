@@ -1,69 +1,41 @@
 #!/usr/bin/perl -w
 # Robert Kulagowski
+# sudo apt-get install libwww-mechanize-perl
 
 use strict;
 use Getopt::Long;
 use WWW::Mechanize;
 use POSIX  qw(strftime);
 
-my $version = "0.03";
-my $date    = "2012-03-14";
+my $version = "0.01";
+my $date    = "2012-04-09";
 
-my @data;
+my @lineupdata;
 my $i              = 0;
-my $channel_number = 0;
-my $lineupid       = "";
-my $devtype        = "";
+my %headendURL;
 my $username = "";
 my $password = "";
 my $help;
 my $zipcode = "0";
+my $randhash;
 my $response;
 my $debugenabled=0;
+my $fn;
 my $fh;
+my $row = 0;
+my @he;
+my $m = WWW::Mechanize->new();
+
+my $url="http://localhost/schedulesdirect/";
+# my $url="http://rkulagow.schedulesdirect.org/";
 
 GetOptions(
     'debug'       => \$debugenabled,
     'zipcode=s'   => \$zipcode,
-    'lineupid=s'  => \$lineupid,
-    'devtype=s'   => \$devtype,
     'username=s'  => \$username,
     'password=s'  => \$password,
     'help|?'      => \$help
 );
-
-# Extract the list of known device types
-my %device_type_hash = (
-    'A' => 'Cable A lineup',
-    'B' => 'Cable B lineup',
-    'C' => 'Reserved',
-    'D' => 'Cable (Rebuild)',
-    'E' => 'Reserved',
-    'F' => 'Cable-ready TV sets (Rebuild)',
-    'G' => 'Non-addressable converters and cable-ready sets',
-    'H' => 'Hamlin converter',
-    'I' => 'Jerrold impulse converter',
-    'J' => 'Jerrold converter',
-    'K' => 'Reserved',
-    'L' => 'Digital (Rebuild)',
-    'M' => 'Reserved',
-    'N' => 'Pioneer converter',
-    'O' => 'Oak converter',
-    'P' => 'Reserved',
-    'Q' => 'Reserved',
-    'R' => 'Cable-ready TV sets (non-rebuild)',
-    'S' => 'Reserved',
-    'T' => 'Tocom converter',
-    'U' => 'Cable-ready TV sets with Cable A',
-    'V' => 'Cable-ready TV sets with Cable B',
-    'W' => 'Scientific-Atlanta converter',
-    'X' => 'Digital',
-    'Y' => 'Reserved',
-    'Z' => 'Zenith converter',
-    ''  => 'Cable',
-);
-
-############## Start of main program
 
 if ($help) {
     print <<EOF;
@@ -72,35 +44,73 @@ Usage: tv_grab_na_sd.pl [switches]
 
 This script supports the following command line arguments.
 
---debug                    Enable debug mode. Prints additional information
-                           to assist in troubleshooting any issues.
-                           
---zipcode                  When grabbing the channel list from Schedules
-                           Direct, you can supply your 5-digit zip code or
-                           6-character postal code to get a list of
-                           providers in your area, otherwise you'll be
-                           prompted.  If you're specifying a Canadian postal
-                           code, then use six consecutive characters, no
-                           embedded spaces.
+--debug		Enable debug mode. Prints additional information
+                to assist in troubleshooting any issues.
 
---lineupid                 Your headend identifier.
---devtype                  Headend device type. Defaults to "blank", the
-                           traditional analog lineup.
+--username      Login credentials.
+--password      Login credentials. NOTE: These will be visible in "ps".
 
---username                 Login credentials.
---password                 Login credentials.
+--zipcode	When obtaining the channel list from Schedules Direct
+                you can supply your 5-digit zip code or
+                6-character postal code to get a list of cable TV
+                providers in your area, otherwise you'll be
+                prompted.  If you're specifying a Canadian postal
+                code, then use six consecutive characters, no
+                embedded spaces.
 
---help                     This screen.
+--help          This screen.
 
-Bug reports to rkulagow\@schedulesdirect.org  Include the .conf file and the
+Bug reports to grabber\@schedulesdirect.org  Include the .conf file and the
 complete output when the script is run with --debug
 
 EOF
     exit;
 }
 
-# Yes, goto sometimes considered evil. But not always.
+if (-e "tv_grab_na_sd.conf")
+{
+  open ($fh, "<", "tv_grab_na_sd.conf");
+  @lineupdata = <$fh>;
+  chomp(@lineupdata);
+  close ($fh);
+  foreach (@lineupdata)
+  {
+    if ($_ =~ /^username:(\w+@[a-zA-Z_]+?\.[a-zA-Z]{2,6}) password:(.*) zipcode:(.{5,6})/)
+    {
+      $username = $1;
+      $password = $2;
+      $zipcode = $3;
+    }
+    if ($_ =~ /^headend:(\w+) (.+)/)
+    {
+      $headendURL{$1} = $2;
+    }
+  }
 
+# Password is the only field to leave blank in the config file if you're
+# paranoid about that sort of thing.
+  if ($password eq "")
+  {
+    print "No password specified in .conf file.\nEnter password: ";
+    chomp ($password = <STDIN>);
+  }
+
+  &login_to_sd($username, $password);
+
+  print "Status messages from Schedules Direct:\n";
+  $m->get("$url/process.php?command=get&p1=status&rand=$randhash");
+  print $m->content();
+
+  print "\nDownloading.\n";
+
+  &get_headends();
+  &download_schedules($randhash);
+
+  print "Done.\n";
+  exit(0);
+}
+
+# No configuration file, so we have to manually go through setup.
 if ($username eq "")
 {
   print "Enter your Schedules Direct username: ";
@@ -113,48 +123,31 @@ if ($password eq "")
   chomp ($password = <STDIN>);
 }
 
-START:
-if ( $zipcode eq "0" ) {
-    print "\nPlease enter your zip code / postal code to download lineups:\n";
-    chomp( $zipcode = <STDIN> );
-}
-
-$zipcode = uc($zipcode);
-
-unless ( $zipcode =~ /^\d{5}$/ or $zipcode =~ /^[A-Z0-9]{6}$/ ) {
-    print
-"Invalid zip code specified. Must be 5 digits for U.S., 6 characters for Canada.\n";
-    $zipcode = "0";
-    goto START;
-}
-
-my $m = WWW::Mechanize->new();
-$m->credentials($username, $password);
-
-$m->get("http://rkulagow.schedulesdirect.org/li.php");
-$m->save_content("randhash.txt");
-open( $fh, "<", "randhash.txt" )
-  or die "Fatal error: could not open randhash.txt: $!\n";
-my $randhash = <$fh>;
-close $fh;
-
-chomp ($randhash);
-
-if ($randhash eq "Wrong Credentials!")
+while (1)
 {
-  print "Incorrect username or password, exiting.\n";
-  exit(1);
+    if ($zipcode =~ /^\d{5}$/ or $zipcode =~ /^[A-Z0-9]{6}$/)
+    {
+      last;
+    }
+    print "Please enter your zip code / postal code to download lineups.\n";
+    print "5 digits for U.S., 6 characters for Canada: ";
+    chomp ($zipcode = <STDIN>);
+    $zipcode = uc($zipcode);
 }
 
-$m->get(
-"http://rkulagow.schedulesdirect.org/process.php?command=get&p1=headend&p2=$zipcode"
-);
+&login_to_sd($username, $password);
+
+print "Status messages from Schedules Direct:\n";
+$m->get("$url/process.php?command=get&p1=status&rand=$randhash");
+print $m->content();
+
+print "\n";
+
+$m->get("$url/process.php?command=get&p1=headend&p2=$zipcode");
 $m->save_content("available_headends.txt");
 
 open( $fh, "<", "available_headends.txt" )
   or die "Fatal error: could not open available.txt: $!\n";
-my $row = 0;
-my @he;
 while ( my $line = <$fh> ) {
     chomp($line);
 
@@ -170,147 +163,136 @@ while ( my $line = <$fh> ) {
 $row--;
 close $fh;
 
-print "\n";
-
-if ( $lineupid eq
-    "" )    # if the lineupid wasn't passed as a parameter, ask the user
-{
-    for my $j ( 0 .. $row ) {
-        print
-"$j. $he[$j]->{'name'}, $he[$j]->{'location'} ($he[$j]->{'headend'})\n";
+    while(1)
+    {
+    print "Queued\n";
+    for my $j ( 0 .. $row ) 
+    {
+      if (defined $headendURL{$he[$j]->{'headend'}})
+      {
+        print "*";
+      }
+        print "\t$j. $he[$j]->{'name'}, $he[$j]->{'location'} ($he[$j]->{'headend'})\n";
     }
-    print "\nEnter the number of your lineup, 'Q' to exit, 'A' to try again: ";
+    print "\nEnter the number of the lineup you want to add / remove, 'D' for Done, 'Q' to exit: ";
 
     chomp( $response = <STDIN> );
     $response = uc($response);
 
-    if ( $response eq "Q" ) {
-        exit;
-    }
-
-    if ( $response eq "A" ) {
-        $zipcode = "0";
-        goto START;
-    }
-
-    $response *= 1;    # Numerify it.
-
-    if ( $response < 0 or $response > $row ) {
-        print "Invalid choice.\n";
-        $zipcode = "0";
-        goto START;
-    }
-
-    $lineupid = $he[$response]->{'headend'};
-}
-else # we received a lineupid
-{
-  for my $elem (0 .. $row)
-  {
-    if ($he[$elem]->{'headend'} eq $lineupid)
+    if ( $response eq "Q" ) 
     {
-      $response = $elem;
+        exit(0);
+    }
+
+    if ( $response eq "D" ) 
+    {
+        last;
+    }
+
+    $a = $response*1;    # Numerify it.
+
+    if ( $a < 0 or $a > $row ) 
+    {
+      print "Invalid choice.\n";
+      next;
+    }
+    
+    if (defined $headendURL{$he[$a]->{'headend'}})
+    {
+      delete $headendURL{$he[$a]->{'headend'}};
+    }
+    else
+    {
+      $headendURL{$he[$a]->{'headend'}} = $he[$a]->{'url'};
+    }
+    }
+
+    print "Creating .conf file.\n";
+    print "Do you want to save your password to the config file? (y/N): ";
+    chomp( $response = <STDIN> );
+    $response = uc($response);
+
+open ($fh, ">", "tv_grab_na_sd.conf");
+print $fh "username:$username password:";
+if ($response eq "Y")
+{
+  print $fh "$password";
+}
+print $fh " zipcode:$zipcode\n";
+foreach (sort keys %headendURL)
+{
+  print $fh "headend:$_ $headendURL{$_}\n";
+}
+close ($fh);
+
+print "Created .conf file. Re-run this script to download schedules.\n";
+
+exit(0);
+
+sub login_to_sd()
+{
+  $m->get("$url/login.php");
+
+  my $fields = { 'username' => $_[0], 'password' => $_[1] };
+
+  $m->submit_form(form_number=>1, fields => $fields, button => 'submit');
+
+  # Look for the randhash as a comment in the html page that we get back from
+  # the server.
+  $m->content() =~ /randhash: ([a-z0-9]+)/;
+  $randhash = $1;
+
+  if (not defined $randhash)
+  {
+    print "Incorrect username or password, or account not created at Schedules Direct. Exiting.\n";
+    exit(1);
+  }
+
+}
+
+sub get_headends()
+{
+  foreach $fn (sort keys %headendURL)
+  {
+    unless (-e "$fn.txt")
+    {
+      $m->get("$headendURL{$fn}");
+      $m->save_content("$fn.txt.gz");
+      system("gunzip --force $fn.txt.gz");
     }
   }
 }
 
-print "\nDownloading lineup information.\n";
-
-$m->get( $he[$response]->{'url'} );
-$m->save_content("$lineupid.txt.gz");
-
-print "Unzipping file.\n\n";
-system("gunzip --force $lineupid.txt.gz");
-
-open( $fh, "<", "$lineupid.txt" )
-  or die "Fatal error: could not open $lineupid.txt: $!\n";
-
-my @headend_lineup = <$fh>;
-chomp(@headend_lineup);
-close $fh;
-
-$row = 0;
-my $line = -1;    # Deliberately start less than 0 to catch the first entry.
-my @device_type;
-
-foreach my $elem (@headend_lineup) {
-    $line++;
-    next unless $elem =~ /^Name/;
-    $elem =~ /devicetype:(.?)/;
-    $device_type[$row]->{'type'} = $1;    # The device type
-    $device_type[$row]->{'linenumber'} =
-      $line;    # store the line number as the second element.
-
-    if ( $device_type[$row]->{'type'} eq "|" ) {
-        $device_type[$row]->{'type'} = "";
-    }
-    $row++;
-}
-$row--;
-
-if ( $devtype eq "" ) # User didn't pass the device type as a parameter, so ask.
+sub download_schedules()
 {
-    if ( $row > 0 )    # More than one device type was found.
-    {
-        print "The following device types are available on this headend:\n";
-        for my $j ( 0 .. $row ) {
-            print "$j. $device_type_hash{$device_type[$j]->{'type'}} ($device_type[$j]->{'type'})\n";
-        }
+  # Get the list of headends; open the files based on the hash
+  # pull in the files; parse each line, create a hash of station ID where value is URL
+  # loop through all hashes
 
-        print "Enter the number of the lineup you wish to download: ";
-        chomp( $response = <STDIN> );
-        $response = uc($response);
-
-        if ( $response eq "Q" ) {
-            exit;
-        }
-
-        $response *= 1;    # Numerify it.
-
-        if ( $response < 0 or $response > $row ) {
-            print "Invalid choice.\n";
-            $zipcode = "0";
-            goto START;
-        }
-    }
-    else {
-        $response = 0;
-    }
-}
-else #devtype was passed
-{
-  for my $elem (0 .. $row)
+  $randhash = $_[0];
+  my %a;
+  my $line;
+  my $b;
+  
+  foreach $fn (sort keys %headendURL)
   {
-    if ($device_type[$elem]->{'type'} eq $devtype)
+    open ($fh, "<", "$fn.txt") or die "Could not open $fn: $!\n";
+    while ($line = <$fh>)
     {
-      $response = $elem;
+      if ($line =~ /^channel:(\d+) callsign:(\w+) stationid:(\d+) (.+)$/)
+      {
+        $a{$3} = $4;
+      }
     }
+    close ($fh);
   }
+
+  foreach $i (sort keys %a)
+  {
+    $m->get($a{$i} . "&rand=" . $randhash);
+    $m->save_content($i."_sched.txt.gz");
+  }
+  
 }
-
-# If the user selects the last entry, then create a fake so that we look
-# through the end of the file.
-if ( $response == $row ) {
-    $device_type[ $row + 1 ]->{'linenumber'} = scalar(@headend_lineup);
-}
-
-# Start at the first line after the "Name" line, end one line before the next "Name" line.
-
-print "Downloading schedules.\n";
-
-for my $elem ( $device_type[$response]->{'linenumber'} +
-    1 .. ( $device_type[ $response + 1 ]->{'linenumber'} ) -
-    1 )
-{
-    my $line = $headend_lineup[$elem];
-    $line =~ /^channel:(\d+) callsign:(\w+) stationid:(\d+) (.*+)$/;
-    $data[$elem]->{'callsign'} = $2;
-    $data[$elem]->{'xmlid'} = $3;
-    $data[$elem]->{'URL'} = $4;
-    $m->get($data[$elem]->{'URL'} . "&rand=" . $randhash);
-    $m->save_content($data[$elem]->{'xmlid'} . "_sched.txt.gz");
-}
-
-print "\nDone.\n";
 
 exit(0);
