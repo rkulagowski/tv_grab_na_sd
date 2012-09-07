@@ -1,14 +1,15 @@
 #!/usr/bin/perl -w
 # Robert Kulagowski
-# sudo apt-get install libwww-mechanize-perl
+# sudo apt-get install libwww-mechanize-perl libjson-perl libjson-xs-perl
 
 use strict;
 use Getopt::Long;
 use WWW::Mechanize;
 use POSIX  qw(strftime);
+use JSON;
 
-my $version = "0.01";
-my $date    = "2012-04-09";
+my $version = "0.02";
+my $date    = "2012-09-07";
 
 my @lineupdata;
 my $i              = 0;
@@ -20,17 +21,20 @@ my $zipcode = "0";
 my $randhash;
 my $response;
 my $debugenabled=0;
+my $configure=0;
 my $fn;
 my $fh;
 my $row = 0;
 my @he;
 my $m = WWW::Mechanize->new();
 
-my $url="http://localhost/schedulesdirect/";
-# my $url="http://rkulagow.schedulesdirect.org/";
+# my $url="http://10.244.23.50/schedulesdirect/";
+#my $url="http://rkulagow.schedulesdirect.org/";
+my $url="http://ec2-50-17-151-67.compute-1.amazonaws.com/";
 
 GetOptions(
     'debug'       => \$debugenabled,
+    'configure'   => \$configure,
     'zipcode=s'   => \$zipcode,
     'username=s'  => \$username,
     'password=s'  => \$password,
@@ -43,6 +47,11 @@ tv_grab_na_sd.pl v$version $date
 Usage: tv_grab_na_sd.pl [switches]
 
 This script supports the following command line arguments.
+
+--configure     Re-runs the configure sequence and ignores any existing
+                tv_grab_na_sd.conf file. You may still pass login
+                credentials and zipcode if you want to bypass interactive
+                configuration.
 
 --debug		Enable debug mode. Prints additional information
                 to assist in troubleshooting any issues.
@@ -67,7 +76,7 @@ EOF
     exit;
 }
 
-if (-e "tv_grab_na_sd.conf")
+if (-e "tv_grab_na_sd.conf" && $configure == 0)
 {
   open ($fh, "<", "tv_grab_na_sd.conf");
   @lineupdata = <$fh>;
@@ -98,7 +107,7 @@ if (-e "tv_grab_na_sd.conf")
   &login_to_sd($username, $password);
 
   print "Status messages from Schedules Direct:\n";
-  $m->get("$url/process.php?command=get&p1=status&rand=$randhash");
+  $m->get("$url/proc.php?command=get&p1=status&rand=$randhash");
   print $m->content();
 
   print "\nDownloading.\n";
@@ -138,27 +147,23 @@ while (1)
 &login_to_sd($username, $password);
 
 print "Status messages from Schedules Direct:\n";
-$m->get("$url/process.php?command=get&p1=status&rand=$randhash");
+$m->get("$url/proc.php?command=get&p1=status&rand=$randhash");
 print $m->content();
 
 print "\n";
 
-$m->get("$url/process.php?command=get&p1=headend&p2=$zipcode");
-$m->save_content("available_headends.txt");
+$m->get("$url/proc.php?command=get&p1=headend&p2=$zipcode");
+$m->save_content("available_headends.json.txt");
 
-open( $fh, "<", "available_headends.txt" )
-  or die "Fatal error: could not open available.txt: $!\n";
+open( $fh, "<", "available_headends.json.txt" )
+  or die "Fatal error: could not open available_headends.json.txt: $!\n";
 while ( my $line = <$fh> ) {
-    chomp($line);
-
-    # Skip the ones that aren't cable lineups.
-    next if ( $line =~ /Name:Antenna/ );
-    my @vals = split /\|/, $line;
-    $he[$row]->{'headend'}  = shift @vals;
-    $he[$row]->{'name'}     = shift @vals;
-    $he[$row]->{'location'} = shift @vals;
-    $he[$row]->{'url'}      = shift @vals;
-    $row++;
+  my $he_hash = decode_json( $line );
+  $he[$row]->{'headend'}  = $he_hash->{headend};
+  $he[$row]->{'name'}     = $he_hash->{Name};
+  $he[$row]->{'location'} = $he_hash->{Location};
+  $he[$row]->{'url'}      = $he_hash->{url};
+  $row++;
 }    #end of the while loop
 $row--;
 close $fh;
@@ -231,7 +236,7 @@ exit(0);
 
 sub login_to_sd()
 {
-  $m->get("$url/login.php");
+  $m->get("$url/rh.php");
 
   my $fields = { 'username' => $_[0], 'password' => $_[1] };
 
@@ -267,12 +272,12 @@ sub download_schedules()
 {
   # Get the list of headends; open the files based on the hash
   # pull in the files; parse each line, create a hash of station ID where value is URL
-  # loop through all hashes
+  # Each stationid (key) can only be in the hash once, so we automatically de-dup.
+  # Loop through all hashes
 
   $randhash = $_[0];
-  my %a;
+  my %schedule_to_get;
   my $line;
-  my $b;
   
   foreach $fn (sort keys %headendURL)
   {
@@ -280,17 +285,21 @@ sub download_schedules()
     while ($line = <$fh>)
     {
       if ($line =~ /^channel:(\d+) callsign:(\w+) stationid:(\d+) (.+)$/)
-      {
-        $a{$3} = $4;
+      { # It's a cable headend  
+        $schedule_to_get{$3} = $4;
+      }
+      if ($line =~ /stationid:(\d+) (.+)$/)
+      { # It's over-the-air
+        $schedule_to_get{$1} = $2;
       }
     }
     close ($fh);
   }
 
-  foreach $i (sort keys %a)
+  foreach (sort keys %schedule_to_get)
   {
-    $m->get($a{$i} . "&rand=" . $randhash);
-    $m->save_content($i."_sched.txt.gz");
+    $m->get($schedule_to_get{$_} . "&rand=" . $randhash);
+    $m->save_content($_."_sched.txt.gz");
   }
   
 }
