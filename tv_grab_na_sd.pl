@@ -28,8 +28,7 @@ my $row = 0;
 my @he;
 my $m = WWW::Mechanize->new();
 
-# my $url="http://10.244.23.50/schedulesdirect/";
-#my $url="http://rkulagow.schedulesdirect.org/";
+// The root of the download location for testing purposes.
 my $url="http://ec2-50-17-151-67.compute-1.amazonaws.com/";
 
 GetOptions(
