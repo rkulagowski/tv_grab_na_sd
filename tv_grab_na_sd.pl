@@ -8,8 +8,8 @@ use WWW::Mechanize;
 use POSIX  qw(strftime);
 use JSON;
 
-my $version = "0.02";
-my $date    = "2012-09-07";
+my $version = "0.03";
+my $date    = "2012-09-08";
 
 my @lineupdata;
 my $i              = 0;
@@ -284,22 +284,28 @@ sub download_schedules()
     open ($fh, "<", "$fn.txt") or die "Could not open $fn: $!\n";
     while ($line = <$fh>)
     {
-      if ($line =~ /^channel:(\d+) callsign:(\w+) stationid:(\d+) (.+)$/)
-      { # It's a cable headend  
-        $schedule_to_get{$3} = $4;
-      }
-      if ($line =~ /stationid:(\d+) (.+)$/)
-      { # It's over-the-air
-        $schedule_to_get{$1} = $2;
+      if ($line =~ /"url" : "(.+)p2=(\d{5})",/)
+      {
+        $schedule_to_get{$2} = $1 . "p2=" . $2;
       }
     }
     close ($fh);
   }
 
+  my $counter=1;
+  my $total = scalar(keys %schedule_to_get);
+
   foreach (sort keys %schedule_to_get)
   {
+
+    if ($counter % 10 == 0)
+    {
+      print "Downloaded $counter of $total.\n";
+    }
+    
     $m->get($schedule_to_get{$_} . "&rand=" . $randhash);
     $m->save_content($_."_sched.txt.gz");
+    $counter++;
   }
   
 }
