@@ -83,7 +83,8 @@ if (-e "tv_grab_na_sd.conf" && $configure == 0)
   close ($fh);
   foreach (@lineupdata)
   {
-    if ($_ =~ /^username:(\w+@[a-zA-Z_]+?\.[a-zA-Z]{2,6}) password:(.*) zipcode:(.{5,6})/)
+#    if ($_ =~ /^username:(\w+@[a-zA-Z_]+?\.[a-zA-Z]{2,6}) password:(.*) zipcode:(.{5,6})/)
+    if ($_ =~ /^username:(.*) password:(.*) zipcode:(.{5,6})/)
     {
       $username = $1;
       $password = $2;
