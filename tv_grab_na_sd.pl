@@ -5,14 +5,14 @@
 use strict;
 use Getopt::Long;
 use WWW::Mechanize;
-use POSIX  qw(strftime);
+use POSIX qw(strftime);
 use JSON;
 
-my $version = "0.03";
-my $date    = "2012-09-08";
+my $version = "0.04";
+my $date    = "2012-09-18";
 
 my @lineupdata;
-my $i              = 0;
+my $i = 0;
 my %headendURL;
 my $username = "";
 my $password = "";
@@ -20,8 +20,8 @@ my $help;
 my $zipcode = "0";
 my $randhash;
 my $response;
-my $debugenabled=0;
-my $configure=0;
+my $debugenabled = 0;
+my $configure    = 0;
 my $fn;
 my $fh;
 my $row = 0;
@@ -29,18 +29,19 @@ my @he;
 my $m = WWW::Mechanize->new();
 
 # The root of the download location for testing purposes.
-my $url="http://ec2-50-17-151-67.compute-1.amazonaws.com/";
+my $url = "http://ec2-50-17-151-67.compute-1.amazonaws.com/";
 
 GetOptions(
-    'debug'       => \$debugenabled,
-    'configure'   => \$configure,
-    'zipcode=s'   => \$zipcode,
-    'username=s'  => \$username,
-    'password=s'  => \$password,
-    'help|?'      => \$help
+    'debug'      => \$debugenabled,
+    'configure'  => \$configure,
+    'zipcode=s'  => \$zipcode,
+    'username=s' => \$username,
+    'password=s' => \$password,
+    'help|?'     => \$help
 );
 
-if ($help) {
+if ($help)
+{
     print <<EOF;
 tv_grab_na_sd.pl v$version $date
 Usage: tv_grab_na_sd.pl [switches]
@@ -75,76 +76,77 @@ EOF
     exit;
 }
 
-if (-e "tv_grab_na_sd.conf" && $configure == 0)
+if ( -e "tv_grab_na_sd.conf" && $configure == 0 )
 {
-  open ($fh, "<", "tv_grab_na_sd.conf");
-  @lineupdata = <$fh>;
-  chomp(@lineupdata);
-  close ($fh);
-  foreach (@lineupdata)
-  {
+    open( $fh, "<", "tv_grab_na_sd.conf" );
+    @lineupdata = <$fh>;
+    chomp(@lineupdata);
+    close($fh);
+    foreach (@lineupdata)
+    {
+
 #    if ($_ =~ /^username:(\w+@[a-zA-Z_]+?\.[a-zA-Z]{2,6}) password:(.*) zipcode:(.{5,6})/)
-    if ($_ =~ /^username:(.*) password:(.*) zipcode:(.{5,6})/)
-    {
-      $username = $1;
-      $password = $2;
-      $zipcode = $3;
+        if ( $_ =~ /^username:(.*) password:(.*) zipcode:(.{5,6})/ )
+        {
+            $username = $1;
+            $password = $2;
+            $zipcode  = $3;
+        }
+        if ( $_ =~ /^headend:(\w+) (.+)/ )
+        {
+            $headendURL{$1} = $2;
+        }
     }
-    if ($_ =~ /^headend:(\w+) (.+)/)
+
+    # Password is the only field to leave blank in the config file if you're
+    # paranoid about that sort of thing.
+    if ( $password eq "" )
     {
-      $headendURL{$1} = $2;
+        print "No password specified in .conf file.\nEnter password: ";
+        chomp( $password = <STDIN> );
     }
-  }
 
-# Password is the only field to leave blank in the config file if you're
-# paranoid about that sort of thing.
-  if ($password eq "")
-  {
-    print "No password specified in .conf file.\nEnter password: ";
-    chomp ($password = <STDIN>);
-  }
+    &login_to_sd( $username, $password );
 
-  &login_to_sd($username, $password);
+    print "Status messages from Schedules Direct:\n";
+    $m->get("$url/proc.php?command=get&p1=status&rand=$randhash");
+    print $m->content();
 
-  print "Status messages from Schedules Direct:\n";
-  $m->get("$url/proc.php?command=get&p1=status&rand=$randhash");
-  print $m->content();
+    print "\nDownloading.\n";
 
-  print "\nDownloading.\n";
+    &get_headends();
+    &download_schedules($randhash);
 
-  &get_headends();
-  &download_schedules($randhash);
-
-  print "Done.\n";
-  exit(0);
+    print "Done.\n";
+    exit(0);
 }
 
 # No configuration file, so we have to manually go through setup.
-if ($username eq "")
+if ( $username eq "" )
 {
-  print "Enter your Schedules Direct username: ";
-  chomp ($username = <STDIN>);
+    print "Enter your Schedules Direct username: ";
+    chomp( $username = <STDIN> );
 }
 
-if ($password eq "")
+if ( $password eq "" )
 {
-  print "Enter password: ";
-  chomp ($password = <STDIN>);
+    print "Enter password: ";
+    chomp( $password = <STDIN> );
 }
 
 while (1)
 {
-    if ($zipcode =~ /^\d{5}$/ or $zipcode =~ /^[A-Z0-9]{6}$/)
+    if ( $zipcode =~ /^\d{5}$/ or $zipcode =~ /^[A-Z0-9]{6}$/ )
     {
-      last;
+        last;
     }
     print "Please enter your zip code / postal code to download lineups.\n";
     print "5 digits for U.S., 6 characters for Canada: ";
-    chomp ($zipcode = <STDIN>);
+    chomp( $zipcode = <STDIN> );
     $zipcode = uc($zipcode);
 }
 
-&login_to_sd($username, $password);
+&login_to_sd( $username, $password );
 
 print "Status messages from Schedules Direct:\n";
 $m->get("$url/proc.php?command=get&p1=status&rand=$randhash");
@@ -157,78 +159,81 @@ $m->save_content("available_headends.json.txt");
 
 open( $fh, "<", "available_headends.json.txt" )
   or die "Fatal error: could not open available_headends.json.txt: $!\n";
-while ( my $line = <$fh> ) {
-  my $he_hash = decode_json( $line );
-  $he[$row]->{'headend'}  = $he_hash->{headend};
-  $he[$row]->{'name'}     = $he_hash->{Name};
-  $he[$row]->{'location'} = $he_hash->{Location};
-  $he[$row]->{'url'}      = $he_hash->{url};
-  $row++;
+while ( my $line = <$fh> )
+{
+    my $he_hash = decode_json($line);
+    $he[$row]->{'headend'}  = $he_hash->{headend};
+    $he[$row]->{'name'}     = $he_hash->{Name};
+    $he[$row]->{'location'} = $he_hash->{Location};
+    $he[$row]->{'url'}      = $he_hash->{url};
+    $row++;
 }    #end of the while loop
 $row--;
 close $fh;
 
-    while(1)
-    {
+while (1)
+{
     print "Queued\n";
-    for my $j ( 0 .. $row ) 
+    for my $j ( 0 .. $row )
     {
-      if (defined $headendURL{$he[$j]->{'headend'}})
-      {
-        print "*";
-      }
-        print "\t$j. $he[$j]->{'name'}, $he[$j]->{'location'} ($he[$j]->{'headend'})\n";
+        if ( defined $headendURL{ $he[$j]->{'headend'} } )
+        {
+            print "*";
+        }
+        print
+"\t$j. $he[$j]->{'name'}, $he[$j]->{'location'} ($he[$j]->{'headend'})\n";
     }
-    print "\nEnter the number of the lineup you want to add / remove, 'D' for Done, 'Q' to exit: ";
+    print
+"\nEnter the number of the lineup you want to add / remove, 'D' for Done, 'Q' to exit: ";
 
     chomp( $response = <STDIN> );
     $response = uc($response);
 
-    if ( $response eq "Q" ) 
+    if ( $response eq "Q" )
     {
         exit(0);
     }
 
-    if ( $response eq "D" ) 
+    if ( $response eq "D" )
     {
         last;
     }
 
-    $a = $response*1;    # Numerify it.
+    $a = $response * 1;    # Numerify it.
 
-    if ( $a < 0 or $a > $row ) 
+    if ( $a < 0 or $a > $row )
     {
-      print "Invalid choice.\n";
-      next;
+        print "Invalid choice.\n";
+        next;
     }
-    
-    if (defined $headendURL{$he[$a]->{'headend'}})
+
+    if ( defined $headendURL{ $he[$a]->{'headend'} } )
     {
-      delete $headendURL{$he[$a]->{'headend'}};
+        delete $headendURL{ $he[$a]->{'headend'} };
     }
     else
     {
-      $headendURL{$he[$a]->{'headend'}} = $he[$a]->{'url'};
+        $headendURL{ $he[$a]->{'headend'} } = $he[$a]->{'url'};
     }
-    }
+}
 
-    print "Creating .conf file.\n";
-    print "Do you want to save your password to the config file? (y/N): ";
-    chomp( $response = <STDIN> );
-    $response = uc($response);
+print "Creating .conf file.\n";
+print "Do you want to save your password to the config file? (y/N): ";
+chomp( $response = <STDIN> );
+$response = uc($response);
 
-open ($fh, ">", "tv_grab_na_sd.conf");
+open( $fh, ">", "tv_grab_na_sd.conf" );
 print $fh "username:$username password:";
-if ($response eq "Y")
+if ( $response eq "Y" )
 {
-  print $fh "$password";
+    print $fh "$password";
 }
 print $fh " zipcode:$zipcode\n";
-foreach (sort keys %headendURL)
+foreach ( sort keys %headendURL )
 {
-  print $fh "headend:$_ $headendURL{$_}\n";
+    print $fh "headend:$_ $headendURL{$_}\n";
 }
-close ($fh);
+close($fh);
 
 print "Created .conf file. Re-run this script to download schedules.\n";
 
@@ -236,78 +241,80 @@ exit(0);
 
 sub login_to_sd()
 {
-  $m->get("$url/rh.php");
+    $m->get("$url/rh.php");
 
-  my $fields = { 'username' => $_[0], 'password' => $_[1] };
+    my $fields = { 'username' => $_[0], 'password' => $_[1] };
 
-  $m->submit_form(form_number=>1, fields => $fields, button => 'submit');
+    $m->submit_form( form_number => 1, fields => $fields, button => 'submit' );
 
-  # Look for the randhash as a comment in the html page that we get back from
-  # the server.
-  $m->content() =~ /randhash: ([a-z0-9]+)/;
-  $randhash = $1;
+    # Look for the randhash as a comment in the html page that we get back from
+    # the server.
+    $m->content() =~ /randhash: ([a-z0-9]+)/;
+    $randhash = $1;
 
-  if (not defined $randhash)
-  {
-    print "Incorrect username or password, or account not created at Schedules Direct. Exiting.\n";
-    exit(1);
-  }
+    if ( not defined $randhash )
+    {
+        print
+"Incorrect username or password, or account not created at Schedules Direct. Exiting.\n";
+        exit(1);
+    }
 
 }
 
 sub get_headends()
 {
-  foreach $fn (sort keys %headendURL)
-  {
-    unless (-e "$fn.txt")
+    foreach $fn ( sort keys %headendURL )
     {
-      $m->get("$headendURL{$fn}");
-      $m->save_content("$fn.txt.gz");
-      system("gunzip --force $fn.txt.gz");
+        unless ( -e "$fn.txt" )
+        {
+            $m->get("$headendURL{$fn}");
+            $m->save_content("$fn.txt.gz");
+            system("gunzip --force $fn.txt.gz");
+        }
     }
-  }
 }
 
 sub download_schedules()
 {
-  # Get the list of headends; open the files based on the hash
-  # pull in the files; parse each line, create a hash of station ID where value is URL
-  # Each stationid (key) can only be in the hash once, so we automatically de-dup.
-  # Loop through all hashes
 
-  $randhash = $_[0];
-  my %schedule_to_get;
-  my $line;
-  
-  foreach $fn (sort keys %headendURL)
-  {
-    open ($fh, "<", "$fn.txt") or die "Could not open $fn: $!\n";
-    while ($line = <$fh>)
+# Get the list of headends; open the files based on the hash
+# pull in the files; parse each line, create a hash of station ID where value is URL
+# Each stationid (key) can only be in the hash once, so we automatically de-dup.
+# Loop through all hashes
+
+    $randhash = $_[0];
+    my %schedule_to_get;
+    my $line;
+
+    foreach $fn ( sort keys %headendURL )
     {
-      if ($line =~ /"url" : "(.+)p2=(\d{5})",/)
-      {
-        $schedule_to_get{$2} = $1 . "p2=" . $2;
-      }
+        open( $fh, "<", "$fn.txt" ) or die "Could not open $fn: $!\n";
+        while ( $line = <$fh> )
+        {
+            if ( $line =~ /"url" : "(.+)p2=(\d{5})",/ )
+            {
+                $schedule_to_get{$2} = $1 . "p2=" . $2;
+            }
+        }
+        close($fh);
     }
-    close ($fh);
-  }
 
-  my $counter=1;
-  my $total = scalar(keys %schedule_to_get);
+    my $counter = 1;
+    my $total   = scalar( keys %schedule_to_get );
 
-  foreach (sort keys %schedule_to_get)
-  {
-
-    if ($counter % 10 == 0)
+    foreach ( sort keys %schedule_to_get )
     {
-      print "Downloaded $counter of $total.\n";
+
+        if ( $counter % 10 == 0 )
+        {
+            print "Downloaded $counter of $total.\n";
+        }
+
+        $m->get( $schedule_to_get{$_} . "&rand=" . $randhash );
+        $m->save_content( $_ . "_sched.txt.gz" );
+        $counter++;
     }
-    
-    $m->get($schedule_to_get{$_} . "&rand=" . $randhash);
-    $m->save_content($_."_sched.txt.gz");
-    $counter++;
-  }
-  
+
 }
 
 exit(0);
