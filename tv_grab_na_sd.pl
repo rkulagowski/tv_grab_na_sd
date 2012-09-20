@@ -8,8 +8,8 @@ use WWW::Mechanize;
 use POSIX qw(strftime);
 use JSON;
 
-my $version = "0.04";
-my $date    = "2012-09-18";
+my $version = "0.05";
+my $date    = "2012-09-20";
 
 my @lineupdata;
 my $i = 0;
@@ -29,7 +29,7 @@ my @he;
 my $m = WWW::Mechanize->new();
 
 # The root of the download location for testing purposes.
-my $url = "http://ec2-50-17-151-67.compute-1.amazonaws.com/";
+my $url = "http://ec2-23-22-101-238.compute-1.amazonaws.com/";
 
 GetOptions(
     'debug'      => \$debugenabled,
