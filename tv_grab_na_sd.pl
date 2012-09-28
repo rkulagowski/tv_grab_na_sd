@@ -8,8 +8,8 @@ use WWW::Mechanize;
 use POSIX qw(strftime);
 use JSON;
 
-my $version = "0.05";
-my $date    = "2012-09-20";
+my $version = "0.06";
+my $date    = "2012-09-28";
 
 my @lineupdata;
 my $i = 0;
@@ -27,9 +27,10 @@ my $fh;
 my $row = 0;
 my @he;
 my $m = WWW::Mechanize->new();
+my $url;
 
 # The root of the download location for testing purposes.
-my $url = "http://ec2-23-22-101-238.compute-1.amazonaws.com/";
+my $baseurl = "http://ec2-23-22-101-238.compute-1.amazonaws.com";
 
 GetOptions(
     'debug'      => \$debugenabled,
@@ -241,7 +242,7 @@ exit(0);
 
 sub login_to_sd()
 {
-    $m->get("$url/rh.php");
+    $m->get("$baseurl/rh.php");
 
     my $fields = { 'username' => $_[0], 'password' => $_[1] };
 
@@ -259,6 +260,9 @@ sub login_to_sd()
         exit(1);
     }
 
+    $m->content() =~ /base: http:\/\/([a-z0-9-.]+)/;
+    $url = "http://$1";
+    
 }
 
 sub get_headends()
