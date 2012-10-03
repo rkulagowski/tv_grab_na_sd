@@ -1,7 +1,10 @@
 Robert Kulagowski
 grabber@schedulesdirect.org
 
-v0.02 2012-09-07
+v0.03 2012-10-02
+
+Additional details are located on the Wiki page at
+https://github.com/rkulagowski/tv_grab_na_sd/wiki
 
 Cable Headend
 -------------
@@ -372,9 +375,8 @@ For example, file 20361_sched.txt.gz contains:
 "violence_rating":true,
 "letterbox":false,
 "lang_rating":false,
-"air_date":"2012-09-18",
+"air_datetime":"2012-09-18T02:00:00Z",
 "dvs":false,
-"air_time":"02:00:00",
 "datatype":"schedule",
 "3d":false,
 "time_approximate":false
@@ -384,7 +386,7 @@ Each schedule file will have a single instance of a ProgramDetails object,
 even if that particular program is shown multiple times in the 14 day time
 period.
 
-The air_date and air_time are given in GMT, so the application must make the
+The air_datetime is ISO8601 in GMT, so the application must make the
 appropriate conversion to localtime.
 
 "duration" is seconds.
