@@ -3,6 +3,9 @@ grabber@schedulesdirect.org
 
 v0.02 2012-09-07
 
+Please see the Wiki at https://github.com/rkulagowski/tv_grab_na_sd/wiki for
+information regarding the format and the field description.
+
 This (beta) grabber uses the new Schedules Direct API for downloading
 schedule information directly from Schedules Direct.
 
