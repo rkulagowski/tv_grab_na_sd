@@ -1,7 +1,7 @@
 Robert Kulagowski
 grabber@schedulesdirect.org
 
-v0.03 2012-10-02
+v0.04 2012-11-08
 
 Additional details are located on the Wiki page at
 https://github.com/rkulagowski/tv_grab_na_sd/wiki
@@ -462,4 +462,39 @@ will retrieve the over-the-air lineup for zip code "60030".
 
 http://ec2-50-17-151-67.compute-1.amazonaws.com/proc.php?command=get&p1=schedule&p2=20361&rand=cf2827d4a863b7167a468dc9e36a306a
 
-?command=put - not implemented yet.
+?command=put - Sends commands to the server.
+To send a suggested metadata update:
+
+	&p1=metadata
+	&p2=seriesid
+	&prog_id={program_id}
+	&current=123456
+	&suggested=987665
+	&source=thetvdb
+	&rand={randomhashvalue}
+
+http://ec2-50-17-151-67.compute-1.amazonaws.com/proc.php?command=put&p1=metadata&p2=seriesid&prog_id=
+EP011054800102&current=79836&suggested=116811&source=thetvdb&rand=cf2827d4a863b7167a468dc9e36a306a
+
+In this example, the series ID provided in the metadata was pointing at the
+wrong series at thetvdb.com, so the season and episode information was
+either blank or incorrect.
+
+The user has submitted a suggestion that the current series ID of 79836
+should be replaced by 116811. The metadata source is thetvdb and their
+randhash is {randomhashvalue}. 
+
+Metadata updates which do not include a randomhash will not be processed.
+
+Other options:
+current=0
+	The prog_id doesn't have metadata, but it should. Indicate with
+"current=0", and pass the suggested parameter.
+
+suggested=0
+	The prog_id has metadata, but it's wrong, and no alternate series
+ID is suggested.
+
+current={foo}, suggested={bar}
+	The prog_id has metadata, but it's wrong and should be replaced with
+something else.
