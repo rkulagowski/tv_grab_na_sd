@@ -7,9 +7,10 @@ use Getopt::Long;
 use WWW::Mechanize;
 use POSIX qw(strftime);
 use JSON;
+use Data::Dumper;
 
-my $version = "0.06";
-my $date    = "2012-09-28";
+my $version = "0.08";
+my $date    = "2012-11-15";
 
 my @lineupdata;
 my $i = 0;
@@ -28,9 +29,15 @@ my $row = 0;
 my @he;
 my $m = WWW::Mechanize->new();
 my $url;
+my $use_randhash = 0;
+
+# If we specify a randhash, we only get back the configured lineups in our
+# account, otherwise you get everything in your postal code.
 
 # The root of the download location for testing purposes.
-my $baseurl = "http://ec2-23-22-101-238.compute-1.amazonaws.com";
+#my $baseurl = "http://ec2-23-22-101-238.compute-1.amazonaws.com";
+
+my $baseurl = "http://ec2-54-243-95-178.compute-1.amazonaws.com";
 
 GetOptions(
     'debug'      => \$debugenabled,
@@ -93,7 +100,7 @@ if ( -e "tv_grab_na_sd.conf" && $configure == 0 )
             $password = $2;
             $zipcode  = $3;
         }
-        if ( $_ =~ /^headend:(\w+) (.+)/ )
+        if ( $_ =~ /^headend:(\S+) (.+)/ )
         {
             $headendURL{$1} = $2;
         }
@@ -108,10 +115,7 @@ if ( -e "tv_grab_na_sd.conf" && $configure == 0 )
     }
 
     &login_to_sd( $username, $password );
-
-    print "Status messages from Schedules Direct:\n";
-    $m->get("$url/proc.php?command=get&p1=status&rand=$randhash");
-    print $m->content();
+    &print_status($randhash);
 
     print "\nDownloading.\n";
 
@@ -148,15 +152,18 @@ while (1)
 }
 
 &login_to_sd( $username, $password );
+&print_status($randhash);
 
-print "Status messages from Schedules Direct:\n";
-$m->get("$url/proc.php?command=get&p1=status&rand=$randhash");
-print $m->content();
-
-print "\n";
-
-$m->get("$url/proc.php?command=get&p1=headend&p2=$zipcode");
-$m->save_content("available_headends.json.txt");
+if ( $use_randhash == 0 )
+{
+    $m->get("$url/proc.php?command=get&p1=headend&p2=PC:$zipcode");
+    $m->save_content("available_headends.json.txt");
+}
+else
+{
+    $m->get("$url/proc.php?command=get&p1=headend&p2=PC:$zipcode&rand=$randhash");
+    $m->save_content("available_headends.json.txt");
+}
 
 open( $fh, "<", "available_headends.json.txt" )
   or die "Fatal error: could not open available_headends.json.txt: $!\n";
@@ -262,7 +269,7 @@ sub login_to_sd()
 
     $m->content() =~ /base: http:\/\/([a-z0-9-.]+)/;
     $url = "http://$1";
-    
+
 }
 
 sub get_headends()
@@ -287,38 +294,68 @@ sub download_schedules()
 # Loop through all hashes
 
     $randhash = $_[0];
-    my %schedule_to_get;
     my $line;
+    my %schedule_to_get;
 
     foreach $fn ( sort keys %headendURL )
     {
         open( $fh, "<", "$fn.txt" ) or die "Could not open $fn: $!\n";
-        while ( $line = <$fh> )
-        {
-            if ( $line =~ /"url" : "(.+)p2=(\d{5})",/ )
-            {
-                $schedule_to_get{$2} = $1 . "p2=" . $2;
-            }
-        }
+        $line = <$fh>;
+        chomp($line);
         close($fh);
-    }
 
-    my $counter = 1;
-    my $total   = scalar( keys %schedule_to_get );
+        my $sched = JSON->new->utf8->decode($line);
 
-    foreach ( sort keys %schedule_to_get )
-    {
-
-        if ( $counter % 10 == 0 )
+        foreach my $e ( @{ $sched->{"StationID"} } )
         {
-            print "Downloaded $counter of $total.\n";
+            $e->{url} =~ /p2=(\d{5})/;
+            $schedule_to_get{$1} = $e->{url};
         }
 
-        $m->get( $schedule_to_get{$_} . "&rand=" . $randhash );
-        $m->save_content( $_ . "_sched.txt.gz" );
-        $counter++;
+        my $counter = 1;
+        my $total   = keys(%schedule_to_get);
+
+        print "$total to download.\n";
+
+        foreach ( sort keys %schedule_to_get )
+        {
+            if ( $counter % 10 == 0 )
+            {
+                print "$counter of $total.\n";
+            }
+
+            $m->get( "$schedule_to_get{$_}&rand=" . $randhash );
+            $m->save_content( $_ . "_sched.txt.gz" );
+            $counter++;
+        }
+    }
+}
+
+sub print_status()
+{
+    $randhash = $_[0];
+    print "Status messages from Schedules Direct:\n";
+    $m->get("$url/proc.php?command=get&p1=status&rand=$randhash");
+    my $status_message = JSON->new->utf8->decode( $m->content() );
+
+    my $account_expiration = $status_message->{"Account"}->{"Expires"};
+    print "Account expires on " . scalar localtime($account_expiration) . "\n";
+
+    print "Last data update: ", $status_message->{"Last data update"}, "\n";
+
+    foreach my $e ( @{ $status_message->{"Headend"} } )
+    {
+        print "Headend: ", $e->{ID}, " Modified: ",
+          scalar localtime( $e->{Modified} ), "\n";
     }
 
+    print "System notifications:\n";
+    foreach my $f ( @{ $status_message->{Notifications} } )
+    {
+        print "\t$f\n" if $f ne "";
+    }
+
+    print "\n";
 }
 
 exit(0);
