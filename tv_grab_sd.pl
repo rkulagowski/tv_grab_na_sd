@@ -147,7 +147,8 @@ while (1)
     {
         last;
     }
-    print "Please enter your zip code / postal code to download headends for your area.\n";
+    print
+"Please enter your zip code / postal code to download headends for your area.\n";
     print "5 digits for U.S., 6 characters for Canada: ";
     chomp( $zipcode = <STDIN> );
     $zipcode = uc($zipcode);
@@ -162,11 +163,11 @@ $randhash = &login_to_sd( $username, $password );
 
 if ( $get_all_lineups_in_zip == 0 )
 {
-    $response = &get_headends("none", $zipcode);
+    $response = &get_headends( "none", $zipcode );
 }
 else
 {
-    $response = &get_headends($randhash, $zipcode);
+    $response = &get_headends( $randhash, $zipcode );
 }
 
 open( $fh, "<", "available_headends.json.txt" )
@@ -253,44 +254,54 @@ exit(0);
 sub login_to_sd()
 {
     my %req;
-    
-    $req{1}->{"action"} = "get";
-    $req{1}->{"object"} = "randhash";
+
+    $req{1}->{"action"}                = "get";
+    $req{1}->{"object"}                = "randhash";
     $req{1}->{"request"}->{"username"} = $_[0];
     $req{1}->{"request"}->{"password"} = $_[1];
-    $req{1}->{"api"} = $api;
-    
-    my $json1 = new JSON::XS;
+    $req{1}->{"api"}                   = $api;
+
+    my $json1     = new JSON::XS;
     my $json_text = $json1->utf8(1)->encode( $req{1} );
-     
-    print "login_to_sd: created $json_text\n";
 
-    my $response = JSON->new->utf8->decode( &send_request($json_text));
+    if ($debugenabled)
+    {
+        print "login_to_sd: created $json_text\n";
+    }
 
-    if ($response->{"response"} eq "ERROR")
+    my $response = JSON->new->utf8->decode( &send_request($json_text) );
+
+    if ( $response->{"response"} eq "ERROR" )
     {
         print "Received error from server. Exiting.\n";
         exit;
     }
 
-    return ($response->{"randhash"});
+    return ( $response->{"randhash"} );
 }
 
 sub send_request()
 {
     my $request = $_[0];
 
-    print "send->request: request is\n$request\n";
+    if ($debugenabled)
+    {
+
+        print "send->request: request is\n$request\n";
+    }
 
     $m->get("$baseurl/request.php");
 
     my $fields = { 'request' => $request };
 
     $m->submit_form( form_number => 1, fields => $fields, button => 'submit' );
+    if ($debugenabled)
+    {
 
-    print "Response from server:\n" . $m->content();
+        print "Response from server:\n" . $m->content();
+    }
 
-    return ($m->content());
+    return ( $m->content() );
 }
 
 sub download_schedules()
@@ -345,20 +356,22 @@ sub print_status()
     print "Status messages from Schedules Direct:\n";
 
     my %req;
-    
-    $req{1}->{"action"} = "get";
-    $req{1}->{"object"} = "status";
+
+    $req{1}->{"action"}   = "get";
+    $req{1}->{"object"}   = "status";
     $req{1}->{"randhash"} = $randhash;
-    $req{1}->{"api"} = $api;
+    $req{1}->{"api"}      = $api;
 
-    my $json1 = new JSON::XS;
+    my $json1     = new JSON::XS;
     my $json_text = $json1->utf8(1)->encode( $req{1} );
-     
-    print "print->status: json is $json_text\n";
+    if ($debugenabled)
+    {
 
-    my $status_message = JSON->new->utf8->decode( &send_request($json_text));
+        print "print->status: json is $json_text\n";
+    }
+    my $status_message = JSON->new->utf8->decode( &send_request($json_text) );
 
-    if ($status_message->{"response"} eq "ERROR")
+    if ( $status_message->{"response"} eq "ERROR" )
     {
         print "Received error from server. Exiting.\n";
         exit;
@@ -366,7 +379,8 @@ sub print_status()
 
     my $account_expiration = $status_message->{"Account"}->{"Expires"};
     print "Account expires on " . scalar localtime($account_expiration) . "\n";
-    print "Maximum number of headends " . $status_message->{"Account"}->{"MaxHeadends"} . "\n";
+    print "Maximum number of headends "
+      . $status_message->{"Account"}->{"MaxHeadends"} . "\n";
 
     print "Last data update: ", $status_message->{"Last data update"}, "\n";
 
@@ -389,35 +403,37 @@ sub get_headends()
 {
     $randhash = $_[0];
     my $to_get = "PC:" . $_[1];
-    
+
     print "Retrieving headends.\n";
 
     my %req;
-    
-    $req{1}->{"action"} = "get";
-    $req{1}->{"object"} = "headends";
+
+    $req{1}->{"action"}  = "get";
+    $req{1}->{"object"}  = "headends";
     $req{1}->{"request"} = $to_get;
-    $req{1}->{"api"} = $api;
-    
-    if ($randhash ne "none")
+    $req{1}->{"api"}     = $api;
+
+    if ( $randhash ne "none" )
     {
-      $req{1}->{"randhash"} = $randhash;
+        $req{1}->{"randhash"} = $randhash;
     }
 
-    my $json1 = new JSON::XS;
+    my $json1     = new JSON::XS;
     my $json_text = $json1->utf8(1)->encode( $req{1} );
-     
-    print "get->headends: created $json_text\n";
+    if ($debugenabled)
+    {
 
-    my $status_message = JSON->new->utf8->decode( &send_request($json_text));
+        print "get->headends: created $json_text\n";
+    }
+    my $response = JSON->new->utf8->decode( &send_request($json_text) );
 
-    if ($status_message->{"response"} eq "ERROR")
+    if ( $response->{"response"} eq "ERROR" )
     {
         print "Received error from server. Exiting.\n";
         exit;
     }
 
-    return ($status_message);
+    return ($response);
 
 }
 
