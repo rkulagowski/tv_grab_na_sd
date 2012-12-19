@@ -37,12 +37,10 @@ Last Modified may be used by an application to determine whether the lineup
 information it has stored is the most recent.
    "metadata" : [
       {
-         "version" : "2",
          "device" : "Analog",
          "modified" : "2012-07-16"
       },
       {
-         "version" : "6",
          "device" : "X",
          "modified" : "2012-09-05"
       }
@@ -135,7 +133,6 @@ The file format is similar to that of the Cable headend:
 
    "metadata" : [
       {
-         "version" : "2",
          "device" : "Antenna",
          "modified" : "2012-07-23"
       }
@@ -288,12 +285,6 @@ Schedule Detail File
 --------------------
 Each schedule file for a particular stationid will have 14 days of data.
 
-A schedule file may be retrieved by executing the URL specified for the
-stationid.
-
-The server will send you a schedule file for station id with the filename
-stationid_sched.txt.gz
-
 This file is in JSON format and will contain information about the
 programs for that stationid, and the times that the program is on.
 
@@ -404,97 +395,11 @@ that are in your configured lineups.
 
 Command API
 -----------
-$URL is the URL for accessing the Schedules Direct web server. During beta,
-$URL will be http://ec2-50-17-151-67.compute-1.amazonaws.com/proc.php
+All requests to the server as JSON.
 
-The script must first login to Schedules Direct by accessing
+Please see the wiki for the current $baseurl.
 
-http://ec2-50-17-151-67.compute-1.amazonaws.com/rh.php
-
-and submitting a form.
-
-The server will return a file with the randhash embedded as a comment. The
-script / application needs to parse the returned page for "randhash" and
-include the &rand parameter for obtaining schedule listings.
-
---------
-
-Parameters to proc.php:
-
-- Obtaining status:
-?command=get
-	&p1=status
-
-Retrieves account status and other notifications.
-
-- Obtaining list of headends in a postal code
-?command=get
-	&p1=headend
-	&p2={postalcode}
-
-Example:
-http://ec2-50-17-151-67.compute-1.amazonaws.com/proc.php?command=get&p1=headend&p2=60030
-
-will retrieves a list of the over-the-air, cable and satellite lineup id's in postal code
-60030.
-
-- Retrieving a specific lineup 
-?command=get
-	&p1=lineup
-	&p2={lineupid}
-
-Example:
-http://ec2-50-17-151-67.compute-1.amazonaws.com/proc.php?command=get&p1=lineup&p2=IL57303
-
-will retrieve the list of channel numbers and station id's for lineup
-IL57303.
-
-also:
-
-http://ec2-50-17-151-67.compute-1.amazonaws.com/proc.php?command=get&p1=lineup&p2=60030
-
-will retrieve the over-the-air lineup for zip code "60030".
-
-- Obtaining the schedule for a particular station id:
-	&p1=schedule
-	&p2={stationid}
-	&rand={randomhashvalue}
-
-http://ec2-50-17-151-67.compute-1.amazonaws.com/proc.php?command=get&p1=schedule&p2=20361&rand=cf2827d4a863b7167a468dc9e36a306a
-
-?command=put - Sends commands to the server.
-To send a suggested metadata update:
-
-	&p1=metadata
-	&p2=seriesid
-	&prog_id={program_id}
-	&current=123456
-	&suggested=987665
-	&source=thetvdb
-	&rand={randomhashvalue}
-
-http://ec2-50-17-151-67.compute-1.amazonaws.com/proc.php?command=put&p1=metadata&p2=seriesid&prog_id=
-EP011054800102&current=79836&suggested=116811&source=thetvdb&rand=cf2827d4a863b7167a468dc9e36a306a
-
-In this example, the series ID provided in the metadata was pointing at the
-wrong series at thetvdb.com, so the season and episode information was
-either blank or incorrect.
-
-The user has submitted a suggestion that the current series ID of 79836
-should be replaced by 116811. The metadata source is thetvdb and their
-randhash is {randomhashvalue}. 
-
-Metadata updates which do not include a randomhash will not be processed.
-
-Other options:
-current=0
-	The prog_id doesn't have metadata, but it should. Indicate with
-"current=0", and pass the suggested parameter.
-
-suggested=0
-	The prog_id has metadata, but it's wrong, and no alternate series
-ID is suggested.
-
-current={foo}, suggested={bar}
-	The prog_id has metadata, but it's wrong and should be replaced with
-something else.
+The server will return a response with the randhash.  The script /
+application needs to use this randhash during all subsequent queries to the
+server. A randhash expires in 24 hours, or whenever a new session is started
+and a new randhash is generated.
