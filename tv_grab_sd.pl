@@ -9,12 +9,14 @@ use POSIX qw(strftime);
 use JSON;
 use Data::Dumper;
 
-my $version = "0.10";
-my $date    = "2012-12-18";
+my $version = "0.11";
+my $date    = "2012-12-19";
 
 my @lineupdata;
 my $i = 0;
-my %headendURL;
+my %headendModifiedDate_local;
+my %headendModifiedDate_Server;
+my %headend_queued;
 my $username = "";
 my $password = "";
 my $help;
@@ -23,14 +25,14 @@ my $randhash;
 my $response;
 my $debugenabled = 0;
 my $configure    = 0;
-my $fn;
 my $fh;
 my $row = 0;
 my @he;
-my $m = WWW::Mechanize->new();
-my $url;
+my $m                      = WWW::Mechanize->new();
 my $get_all_lineups_in_zip = 0;
 my %req;
+my %schedule_to_get;
+my %program_to_get;
 
 # API must match server version.
 my $api = 20121217;
@@ -54,13 +56,13 @@ GetOptions(
 if ($help)
 {
     print <<EOF;
-tv_grab_na_sd.pl v$version $date
-Usage: tv_grab_na_sd.pl [switches]
+tv_grab_sd.pl v$version $date
+Usage: tv_grab_sd.pl [switches]
 
 This script supports the following command line arguments.
 
 --configure     Re-runs the configure sequence and ignores any existing
-                tv_grab_na_sd.conf file. You may still pass login
+                tv_grab_sd.conf file. You may still pass login
                 credentials and zipcode if you want to bypass interactive
                 configuration.
 
@@ -87,9 +89,9 @@ EOF
     exit;
 }
 
-if ( -e "tv_grab_na_sd.conf" && $configure == 0 )
+if ( -e "tv_grab_sd.conf" && $configure == 0 )
 {
-    open( $fh, "<", "tv_grab_na_sd.conf" );
+    open( $fh, "<", "tv_grab_sd.conf" );
     @lineupdata = <$fh>;
     chomp(@lineupdata);
     close($fh);
@@ -101,9 +103,19 @@ if ( -e "tv_grab_na_sd.conf" && $configure == 0 )
             $password = $2;
             $zipcode  = $3;
         }
-        if ( $_ =~ /^headend:(\S+) (.+)/ )
+        if ( $_ =~ /^headend:(\S+) (\d+)/ )
         {
-            $headendURL{$1} = $2;
+            $headendModifiedDate_local{$1} = $2;
+        }
+        if ( $_ =~ /^station:(\d+)/ )
+        {
+            $schedule_to_get{$1} =
+              1;    # Set it to a dummy value just to populate the hash.
+        }
+        if ( $_ =~ /^program:([[:alnum:]]{14})/ )
+        {
+            $program_to_get{$1} =
+              1;    # Set it to a dummy value just to populate the hash.
         }
     }
 
@@ -121,8 +133,19 @@ if ( -e "tv_grab_na_sd.conf" && $configure == 0 )
 
     print "\nDownloading.\n";
 
-    &get_headends();
+    foreach my $e ( keys %headendModifiedDate_local )
+    {
+        if ( $headendModifiedDate_local{$e} != $headendModifiedDate_Server{$e} )
+        {
+            print
+"Updated lineup $e: local version $headendModifiedDate_local{$e}, server version $headendModifiedDate_Server{$e}\n";
+            &download_lineup( $randhash, $e );
+        }
+    }
+
+    #    &get_headends();
     &download_schedules($randhash);
+    &download_programs($randhash);
 
     print "Done.\n";
     exit(0);
@@ -170,25 +193,22 @@ else
     $response = &get_headends( $randhash, $zipcode );
 }
 
-open( $fh, "<", "available_headends.json.txt" )
-  or die "Fatal error: could not open available_headends.json.txt: $!\n";
-while ( my $line = <$fh> )
+foreach my $e ( @{ $response->{"data"} } )
 {
-    my $he_hash = decode_json($line);
-    $he[$row]->{'headend'}  = $he_hash->{headend};
-    $he[$row]->{'name'}     = $he_hash->{Name};
-    $he[$row]->{'location'} = $he_hash->{Location};
+    $he[$row]->{'headend'}  = $e->{headend};
+    $he[$row]->{'name'}     = $e->{Name};
+    $he[$row]->{'location'} = $e->{Location};
     $row++;
-}    #end of the while loop
+}
+
 $row--;
-close $fh;
 
 while (1)
 {
     print "Queued\n";
     for my $j ( 0 .. $row )
     {
-        if ( defined $headendURL{ $he[$j]->{'headend'} } )
+        if ( defined $headend_queued{ $he[$j]->{'headend'} } )
         {
             print "*";
         }
@@ -219,13 +239,13 @@ while (1)
         next;
     }
 
-    if ( defined $headendURL{ $he[$a]->{'headend'} } )
+    if ( defined $headend_queued{ $he[$a]->{'headend'} } )
     {
-        delete $headendURL{ $he[$a]->{'headend'} };
+        delete $headend_queued{ $he[$a]->{'headend'} };
     }
     else
     {
-        $headendURL{ $he[$a]->{'headend'} } = $he[$a]->{'url'};
+        $headend_queued{ $he[$a]->{'headend'} } = $he[$a]->{'headend'};
     }
 }
 
@@ -234,22 +254,67 @@ print "Do you want to save your password to the config file? (y/N): ";
 chomp( $response = <STDIN> );
 $response = uc($response);
 
-open( $fh, ">", "tv_grab_na_sd.conf" );
+open( $fh, ">", "tv_grab_sd.conf" );
 print $fh "username:$username password:";
 if ( $response eq "Y" )
 {
     print $fh "$password";
 }
 print $fh " zipcode:$zipcode\n";
-foreach ( sort keys %headendURL )
+foreach ( sort keys %headend_queued )
 {
-    print $fh "headend:$_ $headendURL{$_}\n";
+    print $fh "headend:$_ 0\n";
 }
 close($fh);
 
 print "Created .conf file. Re-run this script to download schedules.\n";
 
 exit(0);
+
+sub send_request()
+{
+
+    # The workhorse routine. Creates a JSON object and sends it to the server.
+
+    my $request = $_[0];
+    my $fname   = "";
+
+    if ( defined $_[1] )
+    {
+        $fname = $_[1];
+    }
+
+    if ($debugenabled)
+    {
+        print "send->request: request is\n$request\n";
+    }
+
+    $m->get("$baseurl/request.php");
+
+    my $fields = { 'request' => $request };
+
+    $m->submit_form( form_number => 1, fields => $fields, button => 'submit' );
+    if ( $debugenabled && $fname eq "" )
+
+# If there's a file name, then the response is going to be a .zip file, and we don't want to try to print a zip.
+    {
+        print "Response from server:\n" . $m->content();
+    }
+
+    if ( $fname eq "" )
+    {
+        return ( $m->content() ); # Just return whatever we got from the server.
+    }
+
+    $m->save_content($fname);
+
+    # Make a json response so that other functions don't need to get re-written
+    my %response;
+    $response{1}->{code}     = 200;
+    $response{1}->{response} = "OK";
+    my $json1 = new JSON::XS;
+    return ( $json1->utf8(1)->encode( $response{1} ) );
+}
 
 sub login_to_sd()
 {
@@ -273,81 +338,12 @@ sub login_to_sd()
 
     if ( $response->{"response"} eq "ERROR" )
     {
-        print "Received error from server. Exiting.\n";
+        print "Received error from server:\n";
+        print $response->{"message"}, "\nExiting.\n";
         exit;
     }
 
     return ( $response->{"randhash"} );
-}
-
-sub send_request()
-{
-    my $request = $_[0];
-
-    if ($debugenabled)
-    {
-
-        print "send->request: request is\n$request\n";
-    }
-
-    $m->get("$baseurl/request.php");
-
-    my $fields = { 'request' => $request };
-
-    $m->submit_form( form_number => 1, fields => $fields, button => 'submit' );
-    if ($debugenabled)
-    {
-
-        print "Response from server:\n" . $m->content();
-    }
-
-    return ( $m->content() );
-}
-
-sub download_schedules()
-{
-
-# Get the list of headends; open the files based on the hash
-# pull in the files; parse each line, create a hash of station ID where value is URL
-# Each stationid (key) can only be in the hash once, so we automatically de-dup.
-# Loop through all hashes
-
-    $randhash = $_[0];
-    my $line;
-    my %schedule_to_get;
-
-    foreach $fn ( sort keys %headendURL )
-    {
-        open( $fh, "<", "$fn.txt" ) or die "Could not open $fn: $!\n";
-        $line = <$fh>;
-        chomp($line);
-        close($fh);
-
-        my $sched = JSON->new->utf8->decode($line);
-
-        foreach my $e ( @{ $sched->{"StationID"} } )
-        {
-            $e->{url} =~ /p2=(\d{5})/;
-            $schedule_to_get{$1} = $e->{url};
-        }
-
-        my $counter = 1;
-        my $total   = keys(%schedule_to_get);
-
-        print "$total to download.\n";
-
-        foreach ( sort keys %schedule_to_get )
-        {
-            if ( $counter % 10 == 0 )
-            {
-                print "$counter of $total.\n";
-            }
-
-            $m->get( "$schedule_to_get{$_}&rand=" . $randhash );
-            $m->save_content( $_ . "_sched.txt.gz" );
-            $counter++;
-        }
-    }
 }
 
 sub print_status()
@@ -371,9 +367,10 @@ sub print_status()
     }
     my $status_message = JSON->new->utf8->decode( &send_request($json_text) );
 
-    if ( $status_message->{"response"} eq "ERROR" )
+    if ( $response->{"response"} eq "ERROR" )
     {
-        print "Received error from server. Exiting.\n";
+        print "Received error from server:\n";
+        print $response->{"message"}, "\nExiting.\n";
         exit;
     }
 
@@ -388,6 +385,7 @@ sub print_status()
     {
         print "Headend: ", $e->{ID}, " Modified: ",
           scalar localtime( $e->{Modified} ), "\n";
+        $headendModifiedDate_Server{ $e->{ID} } = $e->{Modified};
     }
 
     print "System notifications:\n";
@@ -399,8 +397,96 @@ sub print_status()
     print "\n";
 }
 
+sub download_schedules()
+{
+    $randhash = $_[0];
+
+    my $total = keys(%schedule_to_get);
+
+    print "$total station schedules to download.\n";
+
+    my %req;
+
+    $req{1}->{"action"}   = "get";
+    $req{1}->{"randhash"} = $randhash;
+    $req{1}->{"object"}   = "schedules";
+    $req{1}->{"api"}      = $api;
+
+    my @tempArray;
+
+    foreach ( keys %schedule_to_get )
+    {
+        if ($debugenabled) { print "to get: $_\n"; }
+        push( @tempArray, $_ );
+    }
+
+    $req{1}->{"request"} = \@tempArray;
+
+    my $json1     = new JSON::XS;
+    my $json_text = $json1->utf8(1)->encode( $req{1} );
+    if ($debugenabled)
+    {
+        print "download->schedules: created $json_text\n";
+    }
+    my $response = JSON->new->utf8->decode(
+        &send_request( $json_text, "schedules.json.zip" ) );
+
+    if ( $response->{"response"} eq "ERROR" )
+    {
+        print "Received error from server:\n";
+        print $response->{"message"}, "\nExiting.\n";
+        exit;
+    }
+}
+
+sub download_programs()
+{
+    $randhash = $_[0];
+
+    my $total = keys(%program_to_get);
+
+    print "$total programs to download.\n";
+
+    my %req;
+
+    $req{1}->{"action"}   = "get";
+    $req{1}->{"randhash"} = $randhash;
+    $req{1}->{"object"}   = "programs";
+    $req{1}->{"api"}      = $api;
+
+    my @tempArray;
+
+    foreach ( keys %program_to_get )
+    {
+        if ($debugenabled) { print "to get: $_\n"; }
+        push( @tempArray, $_ );
+    }
+
+    $req{1}->{"request"} = \@tempArray;
+
+    my $json1     = new JSON::XS;
+    my $json_text = $json1->utf8(1)->encode( $req{1} );
+    if ($debugenabled)
+    {
+        print "download->programs: created $json_text\n";
+    }
+    my $response = JSON->new->utf8->decode(
+        &send_request( $json_text, "programs.json.zip" ) );
+
+    if ( $response->{"response"} eq "ERROR" )
+    {
+        print "Received error from server:\n";
+        print $response->{"message"}, "\nExiting.\n";
+        exit;
+    }
+}
+
 sub get_headends()
 {
+
+    # This function returns the headends which are available in a particular
+    # geographic location.
+
     $randhash = $_[0];
     my $to_get = "PC:" . $_[1];
 
@@ -422,18 +508,53 @@ sub get_headends()
     my $json_text = $json1->utf8(1)->encode( $req{1} );
     if ($debugenabled)
     {
-
         print "get->headends: created $json_text\n";
     }
     my $response = JSON->new->utf8->decode( &send_request($json_text) );
 
     if ( $response->{"response"} eq "ERROR" )
     {
-        print "Received error from server. Exiting.\n";
+        print "Received error from server:\n";
+        print $response->{"message"}, "\nExiting.\n";
         exit;
     }
 
     return ($response);
+
+}
+
+sub download_lineup()
+{
+
+    # A lineup is a specific mapping of channels for a provider.
+
+    $randhash = $_[0];
+    my $to_get = $_[1];
+    print "Retrieving lineup $to_get.\n";
+
+    my %req;
+
+    $req{1}->{"action"}   = "get";
+    $req{1}->{"randhash"} = $randhash;
+    $req{1}->{"object"}   = "lineups";
+    $req{1}->{"request"}  = [$to_get];
+    $req{1}->{"api"}      = $api;
+
+    my $json1     = new JSON::XS;
+    my $json_text = $json1->utf8(1)->encode( $req{1} );
+    if ($debugenabled)
+    {
+        print "download->lineup: created $json_text\n";
+    }
+    my $response = JSON->new->utf8->decode(
+        &send_request( $json_text, "$to_get.json.zip" ) );
+
+    if ( $response->{"response"} eq "ERROR" )
+    {
+        print "Received error from server:\n";
+        print $response->{"message"}, "\nExiting.\n";
+        exit;
+    }
 
 }
 

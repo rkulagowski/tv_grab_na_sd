@@ -1,27 +1,31 @@
 Robert Kulagowski
 grabber@schedulesdirect.org
 
-v0.02 2012-09-07
+v0.03 2012-12-19
 
 Please see the Wiki at https://github.com/rkulagowski/tv_grab_na_sd/wiki for
-information regarding the format and the field description.
+information regarding the format and the field descriptions.
 
-This (beta) grabber uses the new Schedules Direct API for downloading
-schedule information directly from Schedules Direct.
+This grabber uses the new Schedules Direct API for downloading schedule
+information directly from Schedules Direct.
 
 You must have the following perl modules installed for this script to
 function correctly:
 
 $ sudo apt-get install libwww-mechanize-perl libjson-perl libjson-xs-perl
+
 if you're on Ubuntu.
 
-tv_grab_na_sd.pl v0.02 2012-09-07
-Usage: tv_grab_na_sd.pl [switches]
+When run with --help, the script will print:
+
+
+tv_grab_sd.pl v0.11 2012-12-19
+Usage: tv_grab_sd.pl [switches]
 
 This script supports the following command line arguments.
 
 --configure     Re-runs the configure sequence and ignores any existing
-                tv_grab_na_sd.conf file. You may still pass login
+                tv_grab_sd.conf file. You may still pass login
                 credentials and zipcode if you want to bypass interactive
                 configuration.
 
@@ -44,6 +48,8 @@ This script supports the following command line arguments.
 Bug reports to grabber@schedulesdirect.org  Include the .conf file and the
 complete output when the script is run with --debug
 
+=================================================
+
 When the script is run for the first time, if you don't pass --username
 --password and --zipcode as command-line parameters, you'll be prompted for
 your Schedules Direct account information.
@@ -58,3 +64,14 @@ inform you to re-run the script to begin the download process.
 
 When the script is run with a valid tv_grab_na_sd.conf file, it will
 download to the current directory.
+
+NOTE: As of 2012-12-19, the grabber is only a "shell"; it is primarily
+intended for developers to use as a reference for their own development.
+
+The included tv_grab_sd.conf file contains some examples of how to retrieve
+various JSON objects from the server and one possible way that they could be
+parsed in perl. This program is not intended to be a full-featured grabber
+for users without extensive modification.
+
+Any developers / early adopters may send an email to grabber@schedulesdirect.org
+to request access to the beta server.
