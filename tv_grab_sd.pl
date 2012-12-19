@@ -9,8 +9,8 @@ use POSIX qw(strftime);
 use JSON;
 use Data::Dumper;
 
-my $version = "0.08";
-my $date    = "2012-11-15";
+my $version = "0.10";
+my $date    = "2012-12-18";
 
 my @lineupdata;
 my $i = 0;
@@ -29,15 +29,18 @@ my $row = 0;
 my @he;
 my $m = WWW::Mechanize->new();
 my $url;
-my $use_randhash = 0;
+my $get_all_lineups_in_zip = 0;
+my %req;
+
+# API must match server version.
+my $api = 20121217;
 
 # If we specify a randhash, we only get back the configured lineups in our
 # account, otherwise you get everything in your postal code.
 
 # The root of the download location for testing purposes.
-#my $baseurl = "http://ec2-23-22-101-238.compute-1.amazonaws.com";
 
-my $baseurl = "http://ec2-54-243-95-178.compute-1.amazonaws.com";
+my $baseurl = "http://ec2-23-21-174-111.compute-1.amazonaws.com";
 
 GetOptions(
     'debug'      => \$debugenabled,
@@ -61,13 +64,13 @@ This script supports the following command line arguments.
                 credentials and zipcode if you want to bypass interactive
                 configuration.
 
---debug		Enable debug mode. Prints additional information
+--debug         Enable debug mode. Prints additional information
                 to assist in troubleshooting any issues.
 
 --username      Login credentials.
 --password      Login credentials. NOTE: These will be visible in "ps".
 
---zipcode	When obtaining the channel list from Schedules Direct
+--zipcode       When obtaining the channel list from Schedules Direct
                 you can supply your 5-digit zip code or
                 6-character postal code to get a list of cable TV
                 providers in your area, otherwise you'll be
@@ -92,8 +95,6 @@ if ( -e "tv_grab_na_sd.conf" && $configure == 0 )
     close($fh);
     foreach (@lineupdata)
     {
-
-#    if ($_ =~ /^username:(\w+@[a-zA-Z_]+?\.[a-zA-Z]{2,6}) password:(.*) zipcode:(.{5,6})/)
         if ( $_ =~ /^username:(.*) password:(.*) zipcode:(.{5,6})/ )
         {
             $username = $1;
@@ -114,7 +115,8 @@ if ( -e "tv_grab_na_sd.conf" && $configure == 0 )
         chomp( $password = <STDIN> );
     }
 
-    &login_to_sd( $username, $password );
+    $randhash = &login_to_sd( $username, $password );
+
     &print_status($randhash);
 
     print "\nDownloading.\n";
@@ -145,24 +147,26 @@ while (1)
     {
         last;
     }
-    print "Please enter your zip code / postal code to download lineups.\n";
+    print "Please enter your zip code / postal code to download headends for your area.\n";
     print "5 digits for U.S., 6 characters for Canada: ";
     chomp( $zipcode = <STDIN> );
     $zipcode = uc($zipcode);
 }
 
-&login_to_sd( $username, $password );
+$randhash = &login_to_sd( $username, $password );
 &print_status($randhash);
 
-if ( $use_randhash == 0 )
+# If the randhash is sent, then we're going to get only the headends that the
+# user has already configured.  No randhash means all possible headends in
+# this zip / postal code.
+
+if ( $get_all_lineups_in_zip == 0 )
 {
-    $m->get("$url/proc.php?command=get&p1=headend&p2=PC:$zipcode");
-    $m->save_content("available_headends.json.txt");
+    $response = &get_headends("none", $zipcode);
 }
 else
 {
-    $m->get("$url/proc.php?command=get&p1=headend&p2=PC:$zipcode&rand=$randhash");
-    $m->save_content("available_headends.json.txt");
+    $response = &get_headends($randhash, $zipcode);
 }
 
 open( $fh, "<", "available_headends.json.txt" )
@@ -173,7 +177,6 @@ while ( my $line = <$fh> )
     $he[$row]->{'headend'}  = $he_hash->{headend};
     $he[$row]->{'name'}     = $he_hash->{Name};
     $he[$row]->{'location'} = $he_hash->{Location};
-    $he[$row]->{'url'}      = $he_hash->{url};
     $row++;
 }    #end of the while loop
 $row--;
@@ -249,40 +252,45 @@ exit(0);
 
 sub login_to_sd()
 {
-    $m->get("$baseurl/rh.php");
+    my %req;
+    
+    $req{1}->{"action"} = "get";
+    $req{1}->{"object"} = "randhash";
+    $req{1}->{"request"}->{"username"} = $_[0];
+    $req{1}->{"request"}->{"password"} = $_[1];
+    $req{1}->{"api"} = $api;
+    
+    my $json1 = new JSON::XS;
+    my $json_text = $json1->utf8(1)->encode( $req{1} );
+     
+    print "login_to_sd: created $json_text\n";
 
-    my $fields = { 'username' => $_[0], 'password' => $_[1] };
+    my $response = JSON->new->utf8->decode( &send_request($json_text));
+
+    if ($response->{"response"} eq "ERROR")
+    {
+        print "Received error from server. Exiting.\n";
+        exit;
+    }
+
+    return ($response->{"randhash"});
+}
+
+sub send_request()
+{
+    my $request = $_[0];
+
+    print "send->request: request is\n$request\n";
+
+    $m->get("$baseurl/request.php");
+
+    my $fields = { 'request' => $request };
 
     $m->submit_form( form_number => 1, fields => $fields, button => 'submit' );
 
-    # Look for the randhash as a comment in the html page that we get back from
-    # the server.
-    $m->content() =~ /randhash: ([a-z0-9]+)/;
-    $randhash = $1;
+    print "Response from server:\n" . $m->content();
 
-    if ( not defined $randhash )
-    {
-        print
-"Incorrect username or password, or account not created at Schedules Direct. Exiting.\n";
-        exit(1);
-    }
-
-    $m->content() =~ /base: http:\/\/([a-z0-9-.]+)/;
-    $url = "http://$1";
-
-}
-
-sub get_headends()
-{
-    foreach $fn ( sort keys %headendURL )
-    {
-        unless ( -e "$fn.txt" )
-        {
-            $m->get("$headendURL{$fn}");
-            $m->save_content("$fn.txt.gz");
-            system("gunzip --force $fn.txt.gz");
-        }
-    }
+    return ($m->content());
 }
 
 sub download_schedules()
@@ -335,11 +343,30 @@ sub print_status()
 {
     $randhash = $_[0];
     print "Status messages from Schedules Direct:\n";
-    $m->get("$url/proc.php?command=get&p1=status&rand=$randhash");
-    my $status_message = JSON->new->utf8->decode( $m->content() );
+
+    my %req;
+    
+    $req{1}->{"action"} = "get";
+    $req{1}->{"object"} = "status";
+    $req{1}->{"randhash"} = $randhash;
+    $req{1}->{"api"} = $api;
+
+    my $json1 = new JSON::XS;
+    my $json_text = $json1->utf8(1)->encode( $req{1} );
+     
+    print "print->status: json is $json_text\n";
+
+    my $status_message = JSON->new->utf8->decode( &send_request($json_text));
+
+    if ($status_message->{"response"} eq "ERROR")
+    {
+        print "Received error from server. Exiting.\n";
+        exit;
+    }
 
     my $account_expiration = $status_message->{"Account"}->{"Expires"};
     print "Account expires on " . scalar localtime($account_expiration) . "\n";
+    print "Maximum number of headends " . $status_message->{"Account"}->{"MaxHeadends"} . "\n";
 
     print "Last data update: ", $status_message->{"Last data update"}, "\n";
 
@@ -356,6 +383,42 @@ sub print_status()
     }
 
     print "\n";
+}
+
+sub get_headends()
+{
+    $randhash = $_[0];
+    my $to_get = "PC:" . $_[1];
+    
+    print "Retrieving headends.\n";
+
+    my %req;
+    
+    $req{1}->{"action"} = "get";
+    $req{1}->{"object"} = "headends";
+    $req{1}->{"request"} = $to_get;
+    $req{1}->{"api"} = $api;
+    
+    if ($randhash ne "none")
+    {
+      $req{1}->{"randhash"} = $randhash;
+    }
+
+    my $json1 = new JSON::XS;
+    my $json_text = $json1->utf8(1)->encode( $req{1} );
+     
+    print "get->headends: created $json_text\n";
+
+    my $status_message = JSON->new->utf8->decode( &send_request($json_text));
+
+    if ($status_message->{"response"} eq "ERROR")
+    {
+        print "Received error from server. Exiting.\n";
+        exit;
+    }
+
+    return ($status_message);
+
 }
 
 exit(0);
