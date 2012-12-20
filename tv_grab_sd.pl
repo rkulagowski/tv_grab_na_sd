@@ -9,8 +9,8 @@ use POSIX qw(strftime);
 use JSON;
 use Data::Dumper;
 
-my $version = "0.11";
-my $date    = "2012-12-19";
+my $version = "0.12";
+my $date    = "2012-12-20";
 
 my @lineupdata;
 my $i = 0;
@@ -185,7 +185,7 @@ $randhash = &login_to_sd( $username, $password );
 # user has already configured.  No randhash means all possible headends in
 # this zip / postal code.
 
-if ( $get_all_lineups_in_zip == 0 )
+if ( $get_all_lineups_in_zip == 1 )
 {
     $response = &get_headends( "none", $zipcode );
 }
