@@ -42,7 +42,8 @@ my $api = 20121217;
 
 # The root of the download location for testing purposes.
 
-my $baseurl = "http://ec2-23-21-174-111.compute-1.amazonaws.com";
+#my $baseurl = "http://ec2-23-21-174-111.compute-1.amazonaws.com";
+my $baseurl = "http://SD-lb-1362972613.us-east-1.elb.amazonaws.com";
 
 GetOptions(
     'debug'      => \$debugenabled,
@@ -365,7 +366,7 @@ sub print_status()
 
         print "print->status: json is $json_text\n";
     }
-    my $status_message = JSON->new->utf8->decode( &send_request($json_text) );
+    my $response = JSON->new->utf8->decode( &send_request($json_text) );
 
     if ( $response->{"response"} eq "ERROR" )
     {
@@ -374,14 +375,14 @@ sub print_status()
         exit;
     }
 
-    my $account_expiration = $status_message->{"Account"}->{"Expires"};
+    my $account_expiration = $response->{"Account"}->{"Expires"};
     print "Account expires on " . scalar localtime($account_expiration) . "\n";
     print "Maximum number of headends "
-      . $status_message->{"Account"}->{"MaxHeadends"} . "\n";
+      . $response->{"Account"}->{"MaxHeadends"} . "\n";
 
-    print "Last data update: ", $status_message->{"Last data update"}, "\n";
+    print "Last data update: ", $response->{"Last data update"}, "\n";
 
-    foreach my $e ( @{ $status_message->{"Headend"} } )
+    foreach my $e ( @{ $response->{"Headend"} } )
     {
         print "Headend: ", $e->{ID}, " Modified: ",
           scalar localtime( $e->{Modified} ), "\n";
@@ -389,7 +390,7 @@ sub print_status()
     }
 
     print "System notifications:\n";
-    foreach my $f ( @{ $status_message->{Notifications} } )
+    foreach my $f ( @{ $response->{Notifications} } )
     {
         print "\t$f\n" if $f ne "";
     }
