@@ -42,8 +42,7 @@ my $api = 20121217;
 
 # The root of the download location for testing purposes.
 
-#my $baseurl = "http://ec2-23-21-174-111.compute-1.amazonaws.com";
-my $baseurl = "http://SD-lb-1362972613.us-east-1.elb.amazonaws.com";
+my $baseurl = "http://data2.schedulesdirect.org";
 
 GetOptions(
     'debug'      => \$debugenabled,
