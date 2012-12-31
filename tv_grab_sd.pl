@@ -9,8 +9,8 @@ use POSIX qw(strftime);
 use JSON;
 use Data::Dumper;
 
-my $version = "0.12";
-my $date    = "2012-12-20";
+my $version = "0.13";
+my $date    = "2012-12-27";
 
 my @lineupdata;
 my $i = 0;
@@ -42,7 +42,7 @@ my $api = 20121217;
 
 # The root of the download location for testing purposes.
 
-my $baseurl = "http://data2.schedulesdirect.org";
+my $baseurl = "https://data2.schedulesdirect.org";
 
 GetOptions(
     'debug'      => \$debugenabled,
