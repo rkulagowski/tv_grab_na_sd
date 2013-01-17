@@ -9,8 +9,8 @@ use POSIX qw(strftime);
 use JSON;
 use Data::Dumper;
 
-my $version = "0.13";
-my $date    = "2012-12-27";
+my $version = "0.14";
+my $date    = "2013-01-17";
 
 my @lineupdata;
 my $i = 0;
@@ -23,34 +23,43 @@ my $help;
 my $zipcode = "0";
 my $randhash;
 my $response;
-my $debugenabled = 0;
-my $configure    = 0;
+my $debugenabled   = 0;
+my $configure      = 0;
+my $changepassword = 0;
+my $metadataupdate = 0;
+my $addHeadend     = "";
+my $deleteHeadend  = "";
 my $fh;
 my $row = 0;
 my @he;
 my $m                      = WWW::Mechanize->new();
-my $get_all_lineups_in_zip = 0;
+my $get_all_lineups_in_zip = 1;
 my %req;
 my %schedule_to_get;
 my %program_to_get;
 
 # API must match server version.
-my $api = 20121217;
-
-# If we specify a randhash, we only get back the configured lineups in our
-# account, otherwise you get everything in your postal code.
+my $api = 20130107;
 
 # The root of the download location for testing purposes.
 
+# Production server
 my $baseurl = "https://data2.schedulesdirect.org";
 
+# Next baseurl is the test server. Things may be broken there.
+#my $baseurl = "http://23.21.174.111";
+
 GetOptions(
-    'debug'      => \$debugenabled,
-    'configure'  => \$configure,
-    'zipcode=s'  => \$zipcode,
-    'username=s' => \$username,
-    'password=s' => \$password,
-    'help|?'     => \$help
+    'debug'          => \$debugenabled,
+    'configure'      => \$configure,
+    'zipcode=s'      => \$zipcode,
+    'username=s'     => \$username,
+    'password=s'     => \$password,
+    'changepassword' => \$changepassword,
+    'metadataupdate' => \$metadataupdate,
+    'add=s'          => \$addHeadend,
+    'delete=s'       => \$deleteHeadend,
+    'help|?'         => \$help
 );
 
 if ($help)
@@ -61,29 +70,41 @@ Usage: tv_grab_sd.pl [switches]
 
 This script supports the following command line arguments.
 
---configure     Re-runs the configure sequence and ignores any existing
-                tv_grab_sd.conf file. You may still pass login
-                credentials and zipcode if you want to bypass interactive
-                configuration.
+--configure		Re-runs the configure sequence and ignores any existing
+                        tv_grab_sd.conf file. You may still pass login
+                        credentials and zipcode if you want to bypass interactive
+                        configuration.
 
---debug         Enable debug mode. Prints additional information
-                to assist in troubleshooting any issues.
+--debug			Enable debug mode. Prints additional information
+                        to assist in troubleshooting any issues.
 
---username      Login credentials.
---password      Login credentials. NOTE: These will be visible in "ps".
+--username      	Login credentials.
+--password      	Login credentials. NOTE: These will be visible in "ps".
 
---zipcode       When obtaining the channel list from Schedules Direct
-                you can supply your 5-digit zip code or
-                6-character postal code to get a list of cable TV
-                providers in your area, otherwise you'll be
-                prompted.  If you're specifying a Canadian postal
-                code, then use six consecutive characters, no
-                embedded spaces.
+--zipcode       	When obtaining the channel list from Schedules Direct
+                        you can supply your 5-digit zip code or
+                        6-character postal code to get a list of cable TV
+                        providers in your area, otherwise you'll be
+                        prompted.  If you're specifying a Canadian postal
+                        code, then use six consecutive characters, no
+                        embedded spaces.
 
---help          This screen.
+--changepassword	Enters the password change dialog on the client.
+
+--metadataupdate	Updates incorrect metdata.
+
+--add			Add a headend.
+
+--delete		Delete a headend.
+
+--help          	This screen.
 
 Bug reports to grabber\@schedulesdirect.org  Include the .conf file and the
 complete output when the script is run with --debug
+
+NOTE: This grabber is intended for developers who wish to have a starting
+point for their own efforts. There is very little bug checking and it is not
+optimized in any way.
 
 EOF
     exit;
@@ -103,7 +124,7 @@ if ( -e "tv_grab_sd.conf" && $configure == 0 )
             $password = $2;
             $zipcode  = $3;
         }
-        if ( $_ =~ /^headend:(\S+) (\d+)/ )
+        if ( $_ =~ /^headend:(\S+) (\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)/ )
         {
             $headendModifiedDate_local{$1} = $2;
         }
@@ -129,13 +150,65 @@ if ( -e "tv_grab_sd.conf" && $configure == 0 )
 
     $randhash = &login_to_sd( $username, $password );
 
+    if ($changepassword)
+    {
+
+        print "New password: ";
+        my $pass1 = <STDIN>;
+        print "Confirm new password: ";
+        my $pass2 = <STDIN>;
+
+        if ( $pass1 ne $pass2 )
+        {
+            print "\nPasswords did not match. Exiting.\n";
+            exit;
+        }
+
+        chomp($pass2);
+
+        &change_password($pass2);
+
+        exit;
+
+    }
+
+    if ($metadataupdate)
+    {
+        &metadata_update( $randhash, "EP002930532006", "0", "71256", "thetvdb",
+            "seriesid", "Please update as soon as possible." );
+        exit;
+    }
+
     &print_status($randhash);
+
+    if ( $addHeadend ne "" || $deleteHeadend ne "" )
+    {
+
+        my ( $headend, $action );
+        if ( $addHeadend ne "" )
+        {
+            $headend = $addHeadend;
+            $action  = "add";
+            print "Adding headend: $headend\n";
+
+        }
+        else
+        {
+            $headend = $deleteHeadend;
+            $action  = "delete";
+            print "Deleteing headend: $headend\n";
+        }
+
+        &add_or_delete_headend( $randhash, $headend, $action );
+        exit;
+
+    }
 
     print "\nDownloading.\n";
 
     foreach my $e ( keys %headendModifiedDate_local )
     {
-        if ( $headendModifiedDate_local{$e} != $headendModifiedDate_Server{$e} )
+        if ( $headendModifiedDate_local{$e} ne $headendModifiedDate_Server{$e} )
         {
             print
 "Updated lineup $e: local version $headendModifiedDate_local{$e}, server version $headendModifiedDate_Server{$e}\n";
@@ -196,8 +269,8 @@ else
 foreach my $e ( @{ $response->{"data"} } )
 {
     $he[$row]->{'headend'}  = $e->{headend};
-    $he[$row]->{'name'}     = $e->{Name};
-    $he[$row]->{'location'} = $e->{Location};
+    $he[$row]->{'name'}     = $e->{name};
+    $he[$row]->{'location'} = $e->{location};
     $row++;
 }
 
@@ -263,7 +336,7 @@ if ( $response eq "Y" )
 print $fh " zipcode:$zipcode\n";
 foreach ( sort keys %headend_queued )
 {
-    print $fh "headend:$_ 0\n";
+    print $fh "headend:$_ 1970-01-01T00:00:00Z\n";
 }
 close($fh);
 
@@ -374,22 +447,21 @@ sub print_status()
         exit;
     }
 
-    my $account_expiration = $response->{"Account"}->{"Expires"};
-    print "Account expires on " . scalar localtime($account_expiration) . "\n";
+    my $account_expiration = $response->{"account"}->{"expires"};
+    print "Account expires on $account_expiration\n";
     print "Maximum number of headends "
-      . $response->{"Account"}->{"MaxHeadends"} . "\n";
+      . $response->{"account"}->{"maxHeadends"} . "\n";
 
-    print "Last data update: ", $response->{"Last data update"}, "\n";
+    print "Last data update: ", $response->{"lastDataUpdate"}, "\n";
 
-    foreach my $e ( @{ $response->{"Headend"} } )
+    foreach my $e ( @{ $response->{"headend"} } )
     {
-        print "Headend: ", $e->{ID}, " Modified: ",
-          scalar localtime( $e->{Modified} ), "\n";
-        $headendModifiedDate_Server{ $e->{ID} } = $e->{Modified};
+        print "Headend: ", $e->{ID}, " Modified: ", $e->{modified}, "\n";
+        $headendModifiedDate_Server{ $e->{ID} } = $e->{modified};
     }
 
     print "System notifications:\n";
-    foreach my $f ( @{ $response->{Notifications} } )
+    foreach my $f ( @{ $response->{notifications} } )
     {
         print "\t$f\n" if $f ne "";
     }
@@ -555,6 +627,132 @@ sub download_lineup()
         print $response->{"message"}, "\nExiting.\n";
         exit;
     }
+
+}
+
+sub change_password()
+{
+    my $newpassword = $_[0];
+    print "Sending new password ($newpassword) change request to server.\n";
+    my %req;
+
+    $req{1}->{"action"}                   = "update";
+    $req{1}->{"object"}                   = "password";
+    $req{1}->{"randhash"}                 = $randhash;
+    $req{1}->{"request"}->{"newpassword"} = $newpassword;
+    $req{1}->{"api"}                      = $api;
+
+    my $json1     = new JSON::XS;
+    my $json_text = $json1->utf8(1)->encode( $req{1} );
+    if ($debugenabled)
+    {
+        print "update->password: created $json_text\n";
+    }
+    my $response = JSON->new->utf8->decode( &send_request($json_text) );
+
+    if ( $response->{"response"} eq "ERROR" )
+    {
+        print "Received error from server:\n";
+        print $response->{"message"}, "\nExiting.\n";
+        exit;
+    }
+
+    print "Successfully updated password.\n";
+
+}
+
+sub metadata_update()
+{
+    my $randhash        = $_[0];
+    my $prog_id         = $_[1];
+    my $current_value   = $_[2];
+    my $suggested_value = $_[3];
+    my $source          = $_[4];
+    my $whattoupdate    = $_[5];
+    my $comment         = $_[6];
+
+    print "Sending metadata update change request to server.\n";
+    my %req;
+
+    $req{1}->{"action"}                 = "update";
+    $req{1}->{"object"}                 = "metadata";
+    $req{1}->{"randhash"}               = $randhash;
+    $req{1}->{"request"}->{"prog_id"}   = $prog_id;
+    $req{1}->{"request"}->{"current"}   = $current_value;
+    $req{1}->{"request"}->{"suggested"} = $suggested_value;
+    $req{1}->{"request"}->{"source"}    = $source;
+    $req{1}->{"request"}->{"field"}     = $whattoupdate;
+    $req{1}->{"request"}->{"comment"}   = $comment;
+
+    $req{1}->{"api"} = $api;
+
+    my $json1     = new JSON::XS;
+    my $json_text = $json1->utf8(1)->encode( $req{1} );
+    if ($debugenabled)
+    {
+        print "update->metadata: created $json_text\n";
+    }
+    my $response = JSON->new->utf8->decode( &send_request($json_text) );
+
+    if ( $response->{"response"} eq "ERROR" )
+    {
+        print "Received error from server:\n";
+        print $response->{"message"}, "\nExiting.\n";
+        exit;
+    }
+
+    print "Successfully sent metadata update request.\n";
+
+}
+
+sub add_or_delete_headend()
+{
+
+# Order of parameters:randhash,headend,action
+
+    my %req;
+
+    if ( $_[2] eq "add" )
+    {
+        print "Sending addHeadend request to server.\n";
+        $req{1}->{"action"} = "add";
+    }
+
+    if ( $_[2] eq "delete" )
+    {
+        print "Sending deleteHeadend request to server.\n";
+        $req{1}->{"action"} = "delete";
+    }
+
+    $req{1}->{"object"}   = "headends";
+    $req{1}->{"randhash"} = $_[0];
+    $req{1}->{"request"}  = $_[1];
+
+    $req{1}->{"api"} = $api;
+
+    my $json1     = new JSON::XS;
+    my $json_text = $json1->utf8(1)->encode( $req{1} );
+    if ($debugenabled)
+    {
+        print "add/delete->headend: created $json_text\n";
+    }
+    my $response = JSON->new->utf8->decode( &send_request($json_text) );
+
+    if ( $response->{"response"} eq "ERROR" )
+    {
+        print "Received error from server:\n";
+        print $response->{"message"}, "\nExiting.\n";
+        exit;
+    }
+
+    print "Successfully sent Headend request.\n";
+
+    if ($debugenabled)
+    {
+        print Dumper($response);
+    }
+
+    return;
 
 }
 
