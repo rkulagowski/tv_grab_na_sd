@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 # Robert Kulagowski
-# sudo apt-get install libwww-mechanize-perl libjson-perl libjson-xs-perl
+# sudo apt-get install libwww-mechanize-perl libjson-perl libjson-xs-perl libdigest-sha-perl
 
 use strict;
 use Getopt::Long;
@@ -8,8 +8,13 @@ use WWW::Mechanize;
 use POSIX qw(strftime);
 use JSON;
 use Data::Dumper;
+use Digest::SHA qw(sha1_hex);
 
-my $version = "0.14";
+# If you're not insane like Ubuntu (https://bugs.launchpad.net/ubuntu/+source/libdigest-sha1-perl/+bug/993648)
+# you probably want
+# use Digest::SHA1 qw(sha1_hex);
+
+my $version = "0.15";
 my $date    = "2013-01-17";
 
 my @lineupdata;
@@ -29,6 +34,7 @@ my $changepassword = 0;
 my $metadataupdate = 0;
 my $addHeadend     = "";
 my $deleteHeadend  = "";
+my $useBetaServer  = 0;
 my $fh;
 my $row = 0;
 my @he;
@@ -37,17 +43,10 @@ my $get_all_lineups_in_zip = 1;
 my %req;
 my %schedule_to_get;
 my %program_to_get;
+my $baseurl;
 
 # API must match server version.
 my $api = 20130107;
-
-# The root of the download location for testing purposes.
-
-# Production server
-my $baseurl = "https://data2.schedulesdirect.org";
-
-# Next baseurl is the test server. Things may be broken there.
-#my $baseurl = "http://23.21.174.111";
 
 GetOptions(
     'debug'          => \$debugenabled,
@@ -57,10 +56,21 @@ GetOptions(
     'password=s'     => \$password,
     'changepassword' => \$changepassword,
     'metadataupdate' => \$metadataupdate,
+    'beta'           => \$useBetaServer,
     'add=s'          => \$addHeadend,
     'delete=s'       => \$deleteHeadend,
     'help|?'         => \$help
 );
+
+if ($useBetaServer)
+{
+    # Test server. Things may be broken there.
+    $baseurl = "http://23.21.174.111";
+}
+else
+{
+    $baseurl = "https://data2.schedulesdirect.org";
+}
 
 if ($help)
 {
@@ -69,6 +79,9 @@ tv_grab_sd.pl v$version $date
 Usage: tv_grab_sd.pl [switches]
 
 This script supports the following command line arguments.
+
+--beta			Use the beta server to test new features. If not specified,
+                        default to production server.
 
 --configure		Re-runs the configure sequence and ignores any existing
                         tv_grab_sd.conf file. You may still pass login
@@ -396,7 +409,7 @@ sub login_to_sd()
     $req{1}->{"action"}                = "get";
     $req{1}->{"object"}                = "randhash";
     $req{1}->{"request"}->{"username"} = $_[0];
-    $req{1}->{"request"}->{"password"} = $_[1];
+    $req{1}->{"request"}->{"password"} = sha1_hex( $_[1] );
     $req{1}->{"api"}                   = $api;
 
     my $json1     = new JSON::XS;
@@ -639,7 +652,7 @@ sub change_password()
     $req{1}->{"action"}                   = "update";
     $req{1}->{"object"}                   = "password";
     $req{1}->{"randhash"}                 = $randhash;
-    $req{1}->{"request"}->{"newpassword"} = $newpassword;
+    $req{1}->{"request"}->{"newPassword"} = sha1_hex($newpassword);
     $req{1}->{"api"}                      = $api;
 
     my $json1     = new JSON::XS;
@@ -708,7 +721,7 @@ sub metadata_update()
 sub add_or_delete_headend()
 {
 
-# Order of parameters:randhash,headend,action
+    # Order of parameters:randhash,headend,action
 
     my %req;
 
