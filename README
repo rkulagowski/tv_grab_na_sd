@@ -13,6 +13,7 @@ You must have the following perl modules installed for this script to
 function correctly:
 
 $ sudo apt-get install libwww-mechanize-perl libjson-perl libjson-xs-perl
+$ sudo apt-get install libdigest-sha-perl
 
 if you're on Ubuntu.
 
