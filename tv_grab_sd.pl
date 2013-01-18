@@ -14,8 +14,8 @@ use Digest::SHA qw(sha1_hex);
 # you probably want
 # use Digest::SHA1 qw(sha1_hex);
 
-my $version = "0.15";
-my $date    = "2013-01-17";
+my $version = "0.16";
+my $date    = "2013-01-18";
 
 my @lineupdata;
 my $i = 0;
@@ -478,6 +478,8 @@ sub print_status()
     {
         print "\t$f\n" if $f ne "";
     }
+
+    print "Next suggested connect time: " . $response->{"account"}->{"nextSuggestedConnectTime"} . "\n";
 
     print "\n";
 }
