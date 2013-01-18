@@ -80,22 +80,22 @@ Usage: tv_grab_sd.pl [switches]
 
 This script supports the following command line arguments.
 
---beta			Use the beta server to test new features. If not specified,
-                        default to production server.
+--beta			Use the beta server to test new features. If not
+                        specified, default to production server.
 
---configure		Re-runs the configure sequence and ignores any existing
-                        tv_grab_sd.conf file. You may still pass login
-                        credentials and zipcode if you want to bypass interactive
-                        configuration.
+--configure		Re-runs the configure sequence and ignores any
+                        existing tv_grab_sd.conf file.  You may still pass
+                        login credentials and zipcode if you want to bypass
+                        interactive configuration.
 
---debug			Enable debug mode. Prints additional information
-                        to assist in troubleshooting any issues.
+--debug			Enable debug mode. Prints additional information to
+                        assist in troubleshooting any issues.
 
 --username      	Login credentials.
 --password      	Login credentials. NOTE: These will be visible in "ps".
 
---zipcode       	When obtaining the channel list from Schedules Direct
-                        you can supply your 5-digit zip code or
+--zipcode       	When obtaining the channel list from Schedules
+                        Direct you can supply your 5-digit zip code or
                         6-character postal code to get a list of cable TV
                         providers in your area, otherwise you'll be
                         prompted.  If you're specifying a Canadian postal
@@ -116,8 +116,8 @@ Bug reports to grabber\@schedulesdirect.org  Include the .conf file and the
 complete output when the script is run with --debug
 
 NOTE: This grabber is intended for developers who wish to have a starting
-point for their own efforts. There is very little bug checking and it is not
-optimized in any way.
+point for their own efforts.  There is very little bug checking and it is
+not optimized in any way.
 
 EOF
     exit;
