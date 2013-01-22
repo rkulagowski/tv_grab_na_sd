@@ -14,8 +14,8 @@ use Digest::SHA qw(sha1_hex);
 # you probably want
 # use Digest::SHA1 qw(sha1_hex);
 
-my $version = "0.17";
-my $date    = "2013-01-21";
+my $version = "0.18";
+my $date    = "2013-01-22";
 
 my @lineupdata;
 my $i = 0;
@@ -393,6 +393,8 @@ sub send_request()
     {
         return ( $m->content() ); # Just return whatever we got from the server.
     }
+
+    $fname =~ s/PC:/PC_/;
 
     $m->save_content($fname);
 
