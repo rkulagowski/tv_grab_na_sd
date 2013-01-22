@@ -14,8 +14,8 @@ use Digest::SHA qw(sha1_hex);
 # you probably want
 # use Digest::SHA1 qw(sha1_hex);
 
-my $version = "0.16";
-my $date    = "2013-01-18";
+my $version = "0.17";
+my $date    = "2013-01-21";
 
 my @lineupdata;
 my $i = 0;
@@ -38,7 +38,7 @@ my $useBetaServer  = 0;
 my $fh;
 my $row = 0;
 my @he;
-my $m                      = WWW::Mechanize->new();
+my $m                      = WWW::Mechanize->new(agent => "tv_grab_na.pl developer grabber v$version/$date");
 my $get_all_lineups_in_zip = 1;
 my %req;
 my %schedule_to_get;
@@ -66,10 +66,12 @@ if ($useBetaServer)
 {
     # Test server. Things may be broken there.
     $baseurl = "http://23.21.174.111";
+    print "Using beta server.\n";
 }
 else
 {
     $baseurl = "https://data2.schedulesdirect.org";
+    print "Using production server.\n";
 }
 
 if ($help)
