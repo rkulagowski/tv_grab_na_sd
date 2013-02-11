@@ -14,8 +14,8 @@ use Digest::SHA qw(sha1_hex);
 # you probably want
 # use Digest::SHA1 qw(sha1_hex);
 
-my $version = "0.18";
-my $date    = "2013-01-22";
+my $version = "0.19";
+my $date    = "2013-02-10";
 
 my @lineupdata;
 my $i = 0;
@@ -339,12 +339,21 @@ while (1)
 
 print "Creating .conf file.\n";
 print "Do you want to save your password to the config file? (y/N): ";
-chomp( $response = <STDIN> );
-$response = uc($response);
+chomp( my $savePassword = <STDIN> );
+$savePassword = uc($savePassword);
+
+print "Send \"add headend\" command to server? (y/N): ";
+chomp( my $sendAddHeadendCommandToServer = <STDIN> );
+$sendAddHeadendCommandToServer = uc($sendAddHeadendCommandToServer);
+    if ($sendAddHeadendCommandToServer eq "Y")
+    {
+        print "Getting credentials.\n";
+        $randhash = &login_to_sd( $username, $password );
+    }
 
 open( $fh, ">", "tv_grab_sd.conf" );
 print $fh "username:$username password:";
-if ( $response eq "Y" )
+if ( $savePassword eq "Y" )
 {
     print $fh "$password";
 }
@@ -352,6 +361,10 @@ print $fh " zipcode:$zipcode\n";
 foreach ( sort keys %headend_queued )
 {
     print $fh "headend:$_ 1970-01-01T00:00:00Z\n";
+    if ($sendAddHeadendCommandToServer eq "Y")
+    {
+        &add_or_delete_headend( $randhash, $_, "add");
+    }
 }
 close($fh);
 
