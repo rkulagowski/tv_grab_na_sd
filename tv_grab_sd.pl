@@ -14,8 +14,8 @@ use Digest::SHA qw(sha1_hex);
 # you probably want
 # use Digest::SHA1 qw(sha1_hex);
 
-my $version = "0.19";
-my $date    = "2013-02-10";
+my $version = "0.20";
+my $date    = "2013-02-26";
 
 my @lineupdata;
 my $i = 0;
@@ -31,22 +31,27 @@ my $response;
 my $debugenabled   = 0;
 my $configure      = 0;
 my $changepassword = 0;
+my $metadata       = 0;
 my $metadataupdate = 0;
 my $addHeadend     = "";
 my $deleteHeadend  = "";
 my $useBetaServer  = 0;
+my $ackMessage     = 0;
 my $fh;
 my $row = 0;
 my @he;
-my $m                      = WWW::Mechanize->new(agent => "tv_grab_na.pl developer grabber v$version/$date");
-my $get_all_lineups_in_zip = 1;
+my $m = WWW::Mechanize->new(
+    agent   => "tv_grab_na.pl developer grabber v$version/$date",
+    timeout => 60 * 10
+);
+my $getOnlyMySubscribedLineups = 0;
 my %req;
-my %schedule_to_get;
-my %program_to_get;
+my %scheduleToGet;
+my %programToGet;
 my $baseurl;
 
 # API must match server version.
-my $api = 20130107;
+my $api = 20130224;
 
 GetOptions(
     'debug'          => \$debugenabled,
@@ -56,9 +61,11 @@ GetOptions(
     'password=s'     => \$password,
     'changepassword' => \$changepassword,
     'metadataupdate' => \$metadataupdate,
+    'metadata'       => \$metadata,
     'beta'           => \$useBetaServer,
     'add=s'          => \$addHeadend,
     'delete=s'       => \$deleteHeadend,
+    'ack=s'          => \$ackMessage,
     'help|?'         => \$help
 );
 
@@ -108,9 +115,14 @@ This script supports the following command line arguments.
 
 --metadataupdate	Updates incorrect metdata.
 
+--metadata	        Retrieve all metadata.
+
 --add			Add a headend.
 
 --delete		Delete a headend.
+
+--ack			Acknowlege a message, so that it doesn't appear
+                        in the status object.
 
 --help          	This screen.
 
@@ -145,14 +157,22 @@ if ( -e "tv_grab_sd.conf" && $configure == 0 )
         }
         if ( $_ =~ /^station:(\d+)/ )
         {
-            $schedule_to_get{$1} =
+            $scheduleToGet{$1} =
               1;    # Set it to a dummy value just to populate the hash.
         }
         if ( $_ =~ /^program:([[:alnum:]]{14})/ )
         {
-            $program_to_get{$1} =
+            $programToGet{$1} =
               1;    # Set it to a dummy value just to populate the hash.
         }
+
+# The following is dead code for now; when we request metadata from the server it's going to
+# send everything.
+#        if ( $_ =~ /^metadata:([[:alnum:]]{14})/ )
+#        {
+#            $metadataToGet{$1} =
+#              1;    # Set it to a dummy value just to populate the hash.
+#        }
     }
 
     # Password is the only field to leave blank in the config file if you're
@@ -225,15 +245,31 @@ if ( -e "tv_grab_sd.conf" && $configure == 0 )
     {
         if ( $headendModifiedDate_local{$e} ne $headendModifiedDate_Server{$e} )
         {
-            print
-"Updated lineup $e: local version $headendModifiedDate_local{$e}, server version $headendModifiedDate_Server{$e}\n";
+            print "Updated lineup $e: local version $headendModifiedDate_local{$e}, ";
+            print "server version $headendModifiedDate_Server{$e}\n";
             &download_lineup( $randhash, $e );
         }
     }
 
     #    &get_headends();
-    &download_schedules($randhash);
-    &download_programs($randhash);
+    if ( keys %scheduleToGet > 0 )
+    {
+        &download_schedules($randhash);
+    }
+    if ( keys %programToGet > 0 )
+    {
+        &download_programs($randhash);
+    }
+
+    if ($metadata)
+    {
+        &downloadMetadata($randhash);
+    }
+
+    if ($ackMessage)
+    {
+        &ackMessage( $randhash, $ackMessage );
+    }
 
     print "Done.\n";
     exit(0);
@@ -258,8 +294,8 @@ while (1)
     {
         last;
     }
-    print
-"Please enter your zip code / postal code to download headends for your area.\n";
+    print "Please enter your zip code / postal code to ";
+    print "download headends for your area.\n";
     print "5 digits for U.S., 6 characters for Canada: ";
     chomp( $zipcode = <STDIN> );
     $zipcode = uc($zipcode);
@@ -272,13 +308,14 @@ $randhash = &login_to_sd( $username, $password );
 # user has already configured.  No randhash means all possible headends in
 # this zip / postal code.
 
-if ( $get_all_lineups_in_zip == 1 )
+if ($getOnlyMySubscribedLineups)
 {
-    $response = &get_headends( "none", $zipcode );
+    $response = &get_headends( $randhash, "" );
 }
 else
 {
     $response = &get_headends( $randhash, $zipcode );
+
 }
 
 foreach my $e ( @{ $response->{"data"} } )
@@ -303,8 +340,8 @@ while (1)
         print
 "\t$j. $he[$j]->{'name'}, $he[$j]->{'location'} ($he[$j]->{'headend'})\n";
     }
-    print
-"\nEnter the number of the lineup you want to add / remove, 'D' for Done, 'Q' to exit: ";
+    print "\nEnter the number of the lineup you want to add / remove,";
+    print " 'D' for Done, 'Q' to exit: ";
 
     chomp( $response = <STDIN> );
     $response = uc($response);
@@ -345,11 +382,11 @@ $savePassword = uc($savePassword);
 print "Send \"add headend\" command to server? (y/N): ";
 chomp( my $sendAddHeadendCommandToServer = <STDIN> );
 $sendAddHeadendCommandToServer = uc($sendAddHeadendCommandToServer);
-    if ($sendAddHeadendCommandToServer eq "Y")
-    {
-        print "Getting credentials.\n";
-        $randhash = &login_to_sd( $username, $password );
-    }
+if ( $sendAddHeadendCommandToServer eq "Y" )
+{
+    print "Getting credentials.\n";
+    $randhash = &login_to_sd( $username, $password );
+}
 
 open( $fh, ">", "tv_grab_sd.conf" );
 print $fh "username:$username password:";
@@ -361,9 +398,9 @@ print $fh " zipcode:$zipcode\n";
 foreach ( sort keys %headend_queued )
 {
     print $fh "headend:$_ 1970-01-01T00:00:00Z\n";
-    if ($sendAddHeadendCommandToServer eq "Y")
+    if ( $sendAddHeadendCommandToServer eq "Y" )
     {
-        &add_or_delete_headend( $randhash, $_, "add");
+        &add_or_delete_headend( $randhash, $_, "add" );
     }
 }
 close($fh);
@@ -397,7 +434,11 @@ sub send_request()
     $m->submit_form( form_number => 1, fields => $fields, button => 'submit' );
     if ( $debugenabled && $fname eq "" )
 
-# If there's a file name, then the response is going to be a .zip file, and we don't want to try to print a zip.
+# If there's a file name, then the response is going to be a .zip file, and
+# we don't want to try to print a zip.
+# NOTE: as of 20130224 the API no longer directly sends .zip files; it will include
+# a link to the file to download.
+
     {
         print "Response from server:\n" . $m->content();
     }
@@ -465,7 +506,6 @@ sub print_status()
     my $json_text = $json1->utf8(1)->encode( $req{1} );
     if ($debugenabled)
     {
-
         print "print->status: json is $json_text\n";
     }
     my $response = JSON->new->utf8->decode( &send_request($json_text) );
@@ -493,19 +533,33 @@ sub print_status()
     print "System notifications:\n";
     foreach my $f ( @{ $response->{notifications} } )
     {
-        print "\t$f\n" if $f ne "";
+        print "msgID:$f->{msgID} date:$f->{date} Message:$f->{message}\n";
     }
 
-    print "Next suggested connect time: " . $response->{"account"}->{"nextSuggestedConnectTime"} . "\n";
+    #    foreach my $f ( @{ $response->{notifications} } )
+    #    {
+    #        print "\t$f\n" if $f ne "";
+    #    }
+
+    print "Messages for you:\n";
+
+    foreach my $g ( @{ $response->{account}->{messages} } )
+    {
+        print "msgID:$g->{msgID} date:$g->{date} Message:$g->{message}\n";
+    }
+
+    print "Next suggested connect time: "
+      . $response->{"account"}->{"nextSuggestedConnectTime"} . "\n";
 
     print "\n";
 }
 
 sub download_schedules()
 {
+    # Receives a .zip file from the server.
     $randhash = $_[0];
 
-    my $total = keys(%schedule_to_get);
+    my $total = keys(%scheduleToGet);
 
     print "$total station schedules to download.\n";
 
@@ -518,7 +572,7 @@ sub download_schedules()
 
     my @tempArray;
 
-    foreach ( keys %schedule_to_get )
+    foreach ( keys %scheduleToGet )
     {
         if ($debugenabled) { print "to get: $_\n"; }
         push( @tempArray, $_ );
@@ -532,8 +586,7 @@ sub download_schedules()
     {
         print "download->schedules: created $json_text\n";
     }
-    my $response = JSON->new->utf8->decode(
-        &send_request( $json_text, "schedules.json.zip" ) );
+    my $response = JSON->new->utf8->decode( &send_request($json_text) );
 
     if ( $response->{"response"} eq "ERROR" )
     {
@@ -541,13 +594,22 @@ sub download_schedules()
         print $response->{"message"}, "\nExiting.\n";
         exit;
     }
+
+    my $url      = $response->{"URL"};
+    my $fileName = $response->{"filename"};
+
+    print "url is: $url\n";
+    $m->get( $url, ':content_file' => $fileName );
+
 }
 
 sub download_programs()
 {
+    # Receives a .zip file from the server.
+    
     $randhash = $_[0];
 
-    my $total = keys(%program_to_get);
+    my $total = keys(%programToGet);
 
     print "$total programs to download.\n";
 
@@ -560,7 +622,7 @@ sub download_programs()
 
     my @tempArray;
 
-    foreach ( keys %program_to_get )
+    foreach ( keys %programToGet )
     {
         if ($debugenabled) { print "to get: $_\n"; }
         push( @tempArray, $_ );
@@ -574,8 +636,7 @@ sub download_programs()
     {
         print "download->programs: created $json_text\n";
     }
-    my $response = JSON->new->utf8->decode(
-        &send_request( $json_text, "programs.json.zip" ) );
+    my $response = JSON->new->utf8->decode( &send_request($json_text) );
 
     if ( $response->{"response"} eq "ERROR" )
     {
@@ -583,6 +644,13 @@ sub download_programs()
         print $response->{"message"}, "\nExiting.\n";
         exit;
     }
+
+    my $url      = $response->{"URL"};
+    my $fileName = $response->{"filename"};
+
+    print "url is: $url\n";
+    $m->get( $url, ':content_file' => $fileName );
+
 }
 
 sub get_headends()
@@ -592,21 +660,26 @@ sub get_headends()
     # geographic location.
 
     $randhash = $_[0];
-    my $to_get = "PC:" . $_[1];
+    my $to_get;
+
+    if ( $_[1] ne "" )
+    {
+        $to_get = "PC:" . $_[1];
+    }
+    else
+    {
+        $to_get = "";
+    }
 
     print "Retrieving headends.\n";
 
     my %req;
 
-    $req{1}->{"action"}  = "get";
-    $req{1}->{"object"}  = "headends";
-    $req{1}->{"request"} = $to_get;
-    $req{1}->{"api"}     = $api;
-
-    if ( $randhash ne "none" )
-    {
-        $req{1}->{"randhash"} = $randhash;
-    }
+    $req{1}->{"action"}   = "get";
+    $req{1}->{"object"}   = "headends";
+    $req{1}->{"request"}  = $to_get;
+    $req{1}->{"api"}      = $api;
+    $req{1}->{"randhash"} = $randhash;
 
     my $json1     = new JSON::XS;
     my $json_text = $json1->utf8(1)->encode( $req{1} );
@@ -631,6 +704,7 @@ sub download_lineup()
 {
 
     # A lineup is a specific mapping of channels for a provider.
+    # Receives a .zip file from the server.
 
     $randhash = $_[0];
     my $to_get = $_[1];
@@ -650,8 +724,7 @@ sub download_lineup()
     {
         print "download->lineup: created $json_text\n";
     }
-    my $response = JSON->new->utf8->decode(
-        &send_request( $json_text, "$to_get.json.zip" ) );
+    my $response = JSON->new->utf8->decode( &send_request($json_text) );
 
     if ( $response->{"response"} eq "ERROR" )
     {
@@ -659,6 +732,12 @@ sub download_lineup()
         print $response->{"message"}, "\nExiting.\n";
         exit;
     }
+
+    my $url      = $response->{"URL"};
+    my $fileName = $response->{"filename"};
+
+    print "url is: $url\n";
+    $m->get( $url, ':content_file' => $fileName );
 
 }
 
@@ -785,6 +864,103 @@ sub add_or_delete_headend()
     }
 
     return;
+
+}
+
+sub ackMessage()
+{
+    my %req;
+    $randhash = $_[0];
+    my $to_del = $_[1];
+
+    # Note: you can also ACK multiple messages by passing an array of msgIDs in
+    # the request to the server.
+
+    $req{1}->{"action"}   = "delete";
+    $req{1}->{"randhash"} = $randhash;
+    $req{1}->{"object"}   = "message";
+    $req{1}->{"request"}  = [$to_del];
+    $req{1}->{"api"}      = $api;
+
+    my $json1     = new JSON::XS;
+    my $json_text = $json1->utf8(1)->encode( $req{1} );
+    if ($debugenabled)
+    {
+        print "ackMessage: created $json_text\n";
+    }
+    my $response = JSON->new->utf8->decode( &send_request($json_text) );
+
+    if ( $response->{"response"} eq "ERROR" )
+    {
+        print "Received error from server:\n";
+        print $response->{"message"}, "\nExiting.\n";
+        exit;
+    }
+    print "Successfully sent delete message request.\n";
+    if ($debugenabled)
+    {
+        print Dumper($response);
+    }
+
+    return;
+
+}
+
+sub downloadMetadata()
+{
+
+    # Gets a .zip file from the server.
+    
+    my %req;
+    my @tempArray;
+    my $modified;
+
+    $randhash = $_[0];
+
+    # At some point we may dynamically generate metadata on the server, but as
+    # of 2013-02-21 it's a static file, so we don't need to generate a "fancy"
+    # request.
+
+
+
+    #    foreach ( keys %metadataToGet )
+    #    {
+    #        if ($debugenabled) { print "to get: $_\n"; }
+    #        push( @tempArray, $_ );
+    #    }
+
+    $req{1}->{"action"}   = "get";
+    $req{1}->{"randhash"} = $randhash;
+    $req{1}->{"object"}   = "metadata";
+
+    #    $req{1}->{"modified"} = $metadata + 0;
+    #    $req{1}->{"request"}  = \@tempArray;
+    $req{1}->{"api"} = $api;
+
+    my $json1     = new JSON::XS;
+    my $json_text = $json1->utf8(1)->encode( $req{1} );
+    if ($debugenabled)
+    {
+        print "download->metadata: created $json_text\n";
+    }
+
+    #    my $response = JSON->new->utf8->decode(
+    #        &send_request( $json_text, "metadata.json.zip" ) );
+
+    my $response = JSON->new->utf8->decode( &send_request($json_text) );
+
+    if ( $response->{"response"} eq "ERROR" )
+    {
+        print "Received error from server:\n";
+        print $response->{"message"}, "\nExiting.\n";
+        exit;
+    }
+
+    my $url      = $response->{"URL"};
+    my $fileName = $response->{"filename"};
+
+    print "url is: $url\n";
+    $m->get( $url, ':content_file' => $fileName );
 
 }
 
