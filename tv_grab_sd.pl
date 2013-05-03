@@ -50,9 +50,7 @@ my %scheduleToGet;
 my %programToGet;
 my %headendToGet;
 my $baseurl;
-
-# API must match server version.
-my $api = 20130331;
+my $api="";
 
 GetOptions(
     'debug'          => \$debugenabled,
@@ -75,11 +73,15 @@ if ($useBetaServer)
     # Test server. Things may be broken there.
     $baseurl = "http://23.21.174.111";
     print "Using beta server.\n";
+    # API must match server version.
+    $api = 20130502;
 }
 else
 {
     $baseurl = "https://data2.schedulesdirect.org";
     print "Using production server.\n";
+    # API must match server version.
+    $api = 20130331;
 }
 
 if ($help)
