@@ -1,7 +1,7 @@
 Robert Kulagowski
 grabber@schedulesdirect.org
 
-v0.15 2013-01-17
+v0.21 2013-05-02
 
 Please see the Wiki at https://github.com/rkulagowski/tv_grab_na_sd/wiki for
 information regarding the format and the field descriptions.
@@ -20,8 +20,7 @@ if you're on Ubuntu.
 When run with --help, the script will print:
 
 =================================================
-
-tv_grab_sd.pl v0.15 2013-01-17
+tv_grab_sd.pl v0.21 2013-05-02
 Usage: tv_grab_sd.pl [switches]
 
 This script supports the following command line arguments.
@@ -52,9 +51,14 @@ This script supports the following command line arguments.
 
 --metadataupdate        Updates incorrect metdata.
 
+--metadata              Retrieve all metadata.
+
 --add                   Add a headend.
 
 --delete                Delete a headend.
+
+--ack                   Acknowlege a message, so that it doesn't appear
+                        in the status object.
 
 --help                  This screen.
 
@@ -64,7 +68,6 @@ complete output when the script is run with --debug
 NOTE: This grabber is intended for developers who wish to have a starting
 point for their own efforts.  There is very little bug checking and it is
 not optimized in any way.
-
 
 =================================================
 
@@ -91,5 +94,9 @@ various JSON objects from the server and one possible way that they could be
 parsed in perl. This program is not intended to be a full-featured grabber
 for users without extensive modification.
 
-Any developers / early adopters may send an email to grabber@schedulesdirect.org
-to request access to the beta server.
+The beta service is open to all Schedules Direct users. Developers should
+use the "Developers Corner" forum at
+
+http://http://forums.schedulesdirect.org/viewforum.php?f=8
+
+for assistance.
