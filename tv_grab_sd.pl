@@ -14,8 +14,8 @@ use Digest::SHA qw(sha1_hex);
 # you probably want
 # use Digest::SHA1 qw(sha1_hex);
 
-my $version = "0.20";
-my $date    = "2013-02-26";
+my $version = "0.21";
+my $date    = "2013-05-02";
 
 my @lineupdata;
 my $i = 0;
@@ -48,10 +48,11 @@ my $getOnlyMySubscribedLineups = 0;
 my %req;
 my %scheduleToGet;
 my %programToGet;
+my %headendToGet;
 my $baseurl;
 
 # API must match server version.
-my $api = 20130224;
+my $api = 20130331;
 
 GetOptions(
     'debug'          => \$debugenabled,
@@ -187,7 +188,6 @@ if ( -e "tv_grab_sd.conf" && $configure == 0 )
 
     if ($changepassword)
     {
-
         print "New password: ";
         my $pass1 = <STDIN>;
         print "Confirm new password: ";
@@ -210,7 +210,7 @@ if ( -e "tv_grab_sd.conf" && $configure == 0 )
     if ($metadataupdate)
     {
         &metadata_update( $randhash, "EP002930532006", "0", "71256", "thetvdb",
-            "seriesid", "Please update as soon as possible." );
+            "seriesid", "IGNORE:Test message from tv_grab_na.pl developer grabber v$version/$date." );
         exit;
     }
 
@@ -231,7 +231,7 @@ if ( -e "tv_grab_sd.conf" && $configure == 0 )
         {
             $headend = $deleteHeadend;
             $action  = "delete";
-            print "Deleteing headend: $headend\n";
+            print "Deleting headend: $headend\n";
         }
 
         &add_or_delete_headend( $randhash, $headend, $action );
@@ -247,11 +247,15 @@ if ( -e "tv_grab_sd.conf" && $configure == 0 )
         {
             print "Updated lineup $e: local version $headendModifiedDate_local{$e}, ";
             print "server version $headendModifiedDate_Server{$e}\n";
-            &download_lineup( $randhash, $e );
+            $headendToGet{$e} = 1;
         }
     }
 
-    #    &get_headends();
+    if (keys %headendToGet > 0)
+    {
+        &download_headend($randhash);
+    }
+
     if ( keys %scheduleToGet > 0 )
     {
         &download_schedules($randhash);
@@ -517,6 +521,12 @@ sub print_status()
         exit;
     }
 
+    if ( $response->{"response"} eq "OFFLINE" )
+    {
+        print "Server is offline for maintenance. Exiting.\n";
+        exit;
+    }
+
     my $account_expiration = $response->{"account"}->{"expires"};
     print "Account expires on $account_expiration\n";
     print "Maximum number of headends "
@@ -535,11 +545,6 @@ sub print_status()
     {
         print "msgID:$f->{msgID} date:$f->{date} Message:$f->{message}\n";
     }
-
-    #    foreach my $f ( @{ $response->{notifications} } )
-    #    {
-    #        print "\t$f\n" if $f ne "";
-    #    }
 
     print "Messages for you:\n";
 
@@ -655,7 +660,6 @@ sub download_programs()
 
 sub get_headends()
 {
-
     # This function returns the headends which are available in a particular
     # geographic location.
 
@@ -700,29 +704,39 @@ sub get_headends()
 
 }
 
-sub download_lineup()
+sub download_headend()
 {
-
-    # A lineup is a specific mapping of channels for a provider.
+    # A headend can contain multiple lineups. Analog, digital "X", etc.
     # Receives a .zip file from the server.
 
     $randhash = $_[0];
-    my $to_get = $_[1];
-    print "Retrieving lineup $to_get.\n";
+
+    my $total = keys(%headendToGet);
+
+    print "$total headends to download.\n";
 
     my %req;
 
     $req{1}->{"action"}   = "get";
     $req{1}->{"randhash"} = $randhash;
     $req{1}->{"object"}   = "lineups";
-    $req{1}->{"request"}  = [$to_get];
     $req{1}->{"api"}      = $api;
+
+    my @tempArray;
+
+    foreach ( keys %headendToGet )
+    {
+        if ($debugenabled) { print "to get: $_\n"; }
+        push( @tempArray, $_ );
+    }
+
+    $req{1}->{"request"} = \@tempArray;
 
     my $json1     = new JSON::XS;
     my $json_text = $json1->utf8(1)->encode( $req{1} );
     if ($debugenabled)
     {
-        print "download->lineup: created $json_text\n";
+        print "download->headend: created $json_text\n";
     }
     my $response = JSON->new->utf8->decode( &send_request($json_text) );
 
@@ -738,7 +752,6 @@ sub download_lineup()
 
     print "url is: $url\n";
     $m->get( $url, ':content_file' => $fileName );
-
 }
 
 sub change_password()
@@ -921,8 +934,6 @@ sub downloadMetadata()
     # of 2013-02-21 it's a static file, so we don't need to generate a "fancy"
     # request.
 
-
-
     #    foreach ( keys %metadataToGet )
     #    {
     #        if ($debugenabled) { print "to get: $_\n"; }
@@ -935,6 +946,7 @@ sub downloadMetadata()
 
     #    $req{1}->{"modified"} = $metadata + 0;
     #    $req{1}->{"request"}  = \@tempArray;
+
     $req{1}->{"api"} = $api;
 
     my $json1     = new JSON::XS;
@@ -943,9 +955,6 @@ sub downloadMetadata()
     {
         print "download->metadata: created $json_text\n";
     }
-
-    #    my $response = JSON->new->utf8->decode(
-    #        &send_request( $json_text, "metadata.json.zip" ) );
 
     my $response = JSON->new->utf8->decode( &send_request($json_text) );
 
@@ -959,7 +968,7 @@ sub downloadMetadata()
     my $url      = $response->{"URL"};
     my $fileName = $response->{"filename"};
 
-    print "url is: $url\n";
+    print "url is: $url filename is $fileName\n";
     $m->get( $url, ':content_file' => $fileName );
 
 }
