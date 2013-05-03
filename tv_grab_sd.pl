@@ -81,7 +81,7 @@ else
     $baseurl = "https://data2.schedulesdirect.org";
     print "Using production server.\n";
     # API must match server version.
-    $api = 20130331;
+    $api = 20130311;
 }
 
 if ($help)
