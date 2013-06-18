@@ -15,7 +15,7 @@ use Digest::SHA qw(sha1_hex);
 # use Digest::SHA1 qw(sha1_hex);
 
 my $version = "0.21";
-my $date    = "2013-05-02";
+my $date    = "2013-05-12";
 
 my @lineupdata;
 my $i = 0;
@@ -74,7 +74,7 @@ if ($useBetaServer)
     $baseurl = "http://23.21.174.111";
     print "Using beta server.\n";
     # API must match server version.
-    $api = 20130502;
+    $api = 20130512;
 }
 else
 {
@@ -148,7 +148,7 @@ if ( -e "tv_grab_sd.conf" && $configure == 0 )
     close($fh);
     foreach (@lineupdata)
     {
-        if ( $_ =~ /^username:(.*) password:(.*) zipcode:(.{5,6})/ )
+        if ( $_ =~ /^username:(.*) password:(.*) zipcode:(.*)/ )
         {
             $username = $1;
             $password = $2;
@@ -168,14 +168,6 @@ if ( -e "tv_grab_sd.conf" && $configure == 0 )
             $programToGet{$1} =
               1;    # Set it to a dummy value just to populate the hash.
         }
-
-# The following is dead code for now; when we request metadata from the server it's going to
-# send everything.
-#        if ( $_ =~ /^metadata:([[:alnum:]]{14})/ )
-#        {
-#            $metadataToGet{$1} =
-#              1;    # Set it to a dummy value just to populate the hash.
-#        }
     }
 
     # Password is the only field to leave blank in the config file if you're
@@ -294,18 +286,13 @@ if ( $password eq "" )
     chomp( $password = <STDIN> );
 }
 
-while (1)
-{
-    if ( $zipcode =~ /^\d{5}$/ or $zipcode =~ /^[A-Z0-9]{6}$/ )
-    {
-        last;
-    }
     print "Please enter your zip code / postal code to ";
     print "download headends for your area.\n";
-    print "5 digits for U.S., 6 characters for Canada: ";
+    print "5 digits for U.S., 6 characters for Canada.\n";
+    print "Two-character ISO3166 code for international.\n";
+    print "> ";
     chomp( $zipcode = <STDIN> );
     $zipcode = uc($zipcode);
-}
 
 $randhash = &login_to_sd( $username, $password );
 &print_status($randhash);
@@ -321,7 +308,6 @@ if ($getOnlyMySubscribedLineups)
 else
 {
     $response = &get_headends( $randhash, $zipcode );
-
 }
 
 foreach my $e ( @{ $response->{"data"} } )
